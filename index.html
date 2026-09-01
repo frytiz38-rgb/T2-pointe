@@ -7,7 +7,7 @@
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#111111">
   <title>t2 Point | Enterprise OS</title>
   
-  <!-- === PWA МАНИФЕСТ И ИКОНКА === -->
+  <!-- === ИСТИННЫЙ PWA (КАК NEXUS) === -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -15,9 +15,15 @@
   
   <link rel="icon" href="icon.png">
   <link rel="apple-touch-icon" href="icon.png">
+  <link rel="manifest" href="manifest.json">
   
-  <!-- Исправленный манифест со строгим start_url для Яндекса -->
-  <link rel="manifest" href='data:application/manifest+json,{"name":"t2 Point | Enterprise OS","short_name":"t2 Point","start_url":"https://frytiz38-rgb.github.io/T2-pointe/","display":"standalone","background_color":"#111111","theme_color":"#E5006D","icons":[{"src":"https://frytiz38-rgb.github.io/T2-pointe/icon.png","sizes":"512x512","type":"image/png"}]}'>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => console.log('SW fallback'));
+      });
+    }
+  </script>
   <!-- ================================== -->
 
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -81,13 +87,13 @@
       db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
       isCloudOnline = true;
     } catch(e) { 
-      console.warn("Firebase Init Offline Fallback:", e); 
+      console.warn("Firebase Offline Fallback"); 
     }
 
     const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
 
     function useGlobalSync(key, initialValue) {
-      const storageKey = `t2_global_${key}_v22`;
+      const storageKey = `t2_global_${key}_v23`;
       const [data, setData] = useState(() => {
         try {
           const local = window.localStorage.getItem(storageKey);
@@ -98,14 +104,14 @@
 
       useEffect(() => {
         if (!isCloudOnline || !db) return;
-        const unsubscribe = db.collection('t2_global_v22').doc(key).onSnapshot(doc => {
+        const unsubscribe = db.collection('t2_global_v23').doc(key).onSnapshot(doc => {
           if (doc.exists) {
             setData(doc.data().value);
             window.localStorage.setItem(storageKey, JSON.stringify(doc.data().value));
           } else {
             const current = window.localStorage.getItem(storageKey);
             const val = current ? JSON.parse(current) : initialValue;
-            db.collection('t2_global_v22').doc(key).set({ value: val }).catch(()=>{});
+            db.collection('t2_global_v23').doc(key).set({ value: val }).catch(()=>{});
             setData(val);
           }
           isFirstLoad.current = false;
@@ -118,14 +124,14 @@
         setData(valueToStore);
         window.localStorage.setItem(storageKey, JSON.stringify(valueToStore));
         if (isCloudOnline && db) {
-           db.collection('t2_global_v22').doc(key).set({ value: valueToStore }).catch(()=>{});
+           db.collection('t2_global_v23').doc(key).set({ value: valueToStore }).catch(()=>{});
         }
       };
       return [data, setValue];
     }
 
     function useStoreSyncData(storeId, key, initialValue) {
-      const storageKey = `t2_store_${storeId}_${key}_v22`;
+      const storageKey = `t2_store_${storeId}_${key}_v23`;
       
       const [data, setData] = useState(() => {
         try {
@@ -142,14 +148,14 @@
 
         if (!isCloudOnline || !db || !storeId) return;
 
-        const unsubscribe = db.collection(`t2_store_${storeId}_v22`).doc(key).onSnapshot(doc => {
+        const unsubscribe = db.collection(`t2_store_${storeId}_v23`).doc(key).onSnapshot(doc => {
           if (doc.exists) {
             setData(doc.data().value);
             window.localStorage.setItem(storageKey, JSON.stringify(doc.data().value));
           } else {
             const currentLocal = window.localStorage.getItem(storageKey);
             const valToInit = currentLocal ? JSON.parse(currentLocal) : initialValue;
-            db.collection(`t2_store_${storeId}_v22`).doc(key).set({ value: valToInit }).catch(()=>{});
+            db.collection(`t2_store_${storeId}_v23`).doc(key).set({ value: valToInit }).catch(()=>{});
             setData(valToInit);
           }
         }, () => {});
@@ -161,7 +167,7 @@
         setData(valueToStore);
         window.localStorage.setItem(storageKey, JSON.stringify(valueToStore));
         if (isCloudOnline && db && storeId) {
-           db.collection(`t2_store_${storeId}_v22`).doc(key).set({ value: valueToStore }).catch(()=>{});
+           db.collection(`t2_store_${storeId}_v23`).doc(key).set({ value: valueToStore }).catch(()=>{});
         }
       };
       return [data, setValue];
@@ -191,9 +197,8 @@
     const monthName = today.toLocaleString('ru-RU', { month: 'long' });
 
     const getFormattedDate = () => {
-      return new Date().toLocaleString('ru-RU', {
-         day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
-      }).replace(',', '');
+      const d = new Date();
+      return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
     };
 
     const TARIFFS = [
@@ -823,7 +828,7 @@
        return (
           <div className="animate-slide-up pb-8">
              <div className="flex justify-between items-center mb-5">
-                 <h2 className="text-2xl font-black tracking-tight text-t2-black dark:text-white">Сотрудники салона</h2>
+                <h2 className="text-2xl font-black tracking-tight text-t2-black dark:text-white">Сотрудники салона</h2>
                 <button onClick={()=>setShowAdd(!showAdd)} className="bg-t2-pink text-white p-2 rounded-full shadow-sm active:scale-95 transition-transform"><Icon.Plus/></button>
              </div>
 
