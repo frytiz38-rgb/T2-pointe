@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#111111">
+  <title>t2 Point</title>
+  
+  <!-- === НАСТРОЙКИ ПРИЛОЖЕНИЯ И ИКОНКА (PWA) === -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="t2 Point">
+  
+  <link rel="icon" href="https://i.postimg.cc/FYP8ZLWs/9ba3ba56.png" type="image/png">
+  <link rel="apple-touch-icon" href="https://i.postimg.cc/FYP8ZLWs/9ba3ba56.png">
+  
+  <link rel="manifest" href='data:application/manifest+json,{"name":"t2 Point | Enterprise OS","short_name":"t2 Point","display":"standalone","background_color":"#111111","theme_color":"#E5006D","icons":[{"src":"https://i.postimg.cc/FYP8ZLWs/9ba3ba56.png","sizes":"512x512","type":"image/png"}]}'>
+  <!-- ================================== -->
+
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <script src="https://www.gstatic.com/firebasejs/10.4.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore-compat.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: { 
+            t2: { black: '#111111', dark: '#1E1E1E', pink: '#E5006D', gray: '#F0F2F5', border: '#E2E8F0' } 
+          },
+          animation: { 
+             'slide-up': 'slideUp 0.25s ease-out',
+             'pulse-fast': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+          },
+          keyframes: { 
+             slideUp: { '0%': { opacity: '0', transform: 'translateY(12px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } }
+          },
+          boxShadow: { 'glass': '0 8px 32px rgba(0,0,0,0.06)' }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+    body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+    .hide-scroll::-webkit-scrollbar { display: none; }
+    .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  </style>
+</head>
+<body class="bg-gray-50 dark:bg-[#111111] text-gray-900 dark:text-gray-100 transition-colors duration-300">
+  <div id="root" class="h-screen w-full flex flex-col mx-auto max-w-2xl relative overflow-hidden bg-gray-50 dark:bg-[#111111] transition-colors duration-300"></div>
+
+  <script type="text/babel">
+    const { useState, useMemo, useEffect, useCallback, useRef } = React;
+
+    // ============================================================================
+    // 1. ИНИЦИАЛИЗАЦИЯ И ОФЛАЙН-ПЕРСИСТЕНТНОСТЬ FIREBASE
+    // ============================================================================
+    const firebaseConfig = {
+      apiKey: "AIzaSyBmrijaK9UU0rbxzGOfVfc5aO5OxfJY24A",
+      projectId: "lezhnevskaia55"
+    };
+
+    let isCloudOnline = false;
+    let db = null;
+
+    try {
+      if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+      }
+      db = firebase.firestore();
+      db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+      isCloudOnline = true;
+    } catch(e) { 
+      console.warn("Firebase Init Offline Fallback:", e); 
+    }
+
+    function useGlobalSync(key, initialValue) {
+      const storageKey = `t2_global_${key}_v21`;
+      const [data, setData] = useState(() => {
+        try {
+          const local = window.localStorage.getItem(storageKey);
+          return local ? JSON.parse(local) : initialValue;
+        } catch { return initialValue; }
+      });
+      const isFirstLoad = useRef(true);
+
+      useEffect(() => {
+        if (!isCloudOnline || !db) return;
+        const unsubscribe = db.collection('t2_global_v21').doc(key).onSnapshot(doc => {
+          if (doc.exists) {
+            setData(doc.data().value);
+            window.localStorage.setItem(storageKey, JSON.stringify(doc.data().value));
+          } else {
+            const current = window.localStorage.getItem(storageKey);
+            const val = current ? JSON.parse(current) : initialValue;
+            db.collection('t2_global_v21').doc(key).set({ value: val }).catch(()=>{});
+            setData(val);
+          }
+          isFirstLoad.current = false;
+        }, () => {});
+        return () => unsubscribe();
+      }, [key]);
+
+      const setValue = (val) => {
+        const valueToStore = val instanceof Function ? val(data) : val;
+        setData(valueToStore);
+        window.localStorage.setItem(storageKey, JSON.stringify(valueToStore));
+        if (isCloudOnline && db) {
+           db.collection('t2_global_v21').doc(key).set({ value: valueToStore }).catch(()=>{});
+        }
+      };
+      return [data, setValue];
+    }
+
+    function useStoreSyncData(storeId, key, initialValue) {
+      const storageKey = `t2_store_${storeId}_${key}_v21`;
+      
+      const [data, setData] = useState(() => {
+        try {
+          const local = window.localStorage.getItem(storageKey);
+          return local ? JSON.parse(local) : initialValue;
+        } catch { return initialValue; }
+      });
+
+      useEffect(() => {
+        try {
+          const local = window.localStorage.getItem(storageKey);
+          setData(local ? JSON.parse(local) : initialValue);
+        } catch { setData(initialValue); }
+
+        if (!isCloudOnline || !db || !storeId) return;
+
+        const unsubscribe = db.collection(`t2_store_${storeId}_v21`).doc(key).onSnapshot(doc => {
+          if (doc.exists) {
+            setData(doc.data().value);
+            window.localStorage.setItem(storageKey, JSON.stringify(doc.data().value));
+          } else {
+            const currentLocal = window.localStorage.getItem(storageKey);
+            const valToInit = currentLocal ? JSON.parse(currentLocal) : initialValue;
+            db.collection(`t2_store_${storeId}_v21`).doc(key).set({ value: valToInit }).catch(()=>{});
+            setData(valToInit);
+          }
+        }, () => {});
+        return () => unsubscribe();
+      }, [storeId, key]); 
+
+      const setValue = (val) => {
+        const valueToStore = val instanceof Function ? val(data) : val;
+        setData(valueToStore);
+        window.localStorage.setItem(storageKey, JSON.stringify(valueToStore));
+        if (isCloudOnline && db && storeId) {
+           db.collection(`t2_store_${storeId}_v21`).doc(key).set({ value: valueToStore }).catch(()=>{});
+        }
+      };
+      return [data, setValue];
+    }
+
+    function useLocalStorage(key, initialValue) {
+      const [storedValue, setStoredValue] = useState(() => {
+        try { const item = window.localStorage.getItem(key); return item ? JSON.parse(item) : initialValue; } 
+        catch { return initialValue; }
+      });
+      const setValue = (value) => {
+        try {
+          const valueToStore = value instanceof Function ? value(storedValue) : value;
+          setStoredValue(valueToStore);
+          window.localStorage.setItem(key, JSON.stringify(valueToStore));
+        } catch {}
+      };
+      return [storedValue, setValue];
+    }
+
+    // ============================================================================
+    // 2. ДАННЫЕ И СПРАВОЧНИКИ
+    // ============================================================================
+    const generateId = () => Math.random().toString(36).substr(2, 9);
+    const today = new Date();
+    const currentDay = today.getDate();
+    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    const monthName = today.toLocaleString('ru-RU', { month: 'long' });
+
+    const TARIFFS = [
+      { id: 'moy_online', name: 'Мой онлайн', rates: [29, 87, 131, 160], c: 'bg-indigo-500' },
+      { id: 'black', name: 'Black 🔥', rates: [40, 119, 178, 218], c: 'bg-gray-900', isFTP: true },
+      { id: 'moy_razgovor', name: 'Мой разговор', rates: [24, 48, 71, 95], c: 'bg-blue-500' },
+      { id: 'moy_online_plus', name: 'Мой онлайн + 🔥', rates: [32, 95, 143, 174], c: 'bg-indigo-600', isFTP: true },
+      { id: 'vezde_online', name: 'Везде онлайн 🔥', rates: [29, 58, 87, 116], c: 'bg-cyan-500', isFTP: true },
+      { id: 'premium', name: 'Premium', rates: [79, 158, 238, 317], c: 'bg-amber-500' },
+      { id: 'idu', name: 'ИДУ', rates: [48, 95, 143, 190], c: 'bg-emerald-600' },
+      { id: 'classic', name: 'Класс. и остальные', rates: [10, 10, 10, 10], c: 'bg-gray-500' },
+      { id: 'combo', name: 'Комбо', rates: [32, 95, 143, 174], c: 'bg-fuchsia-500', isCombo: true },
+      { id: 'combo_12m', name: 'Комбо 12 мес', rates: [380, 1140, 1711, 2091], ratesFtp: [380, 1331, 1901, 2281], c: 'bg-fuchsia-700', isCombo: true },
+    ];
+
+    const ABONEMENTS = {
+      'moy_online': { name: 'Мой онлайн', m3: [62,185,247], m6: [76,229,305], m12: [87,261,348] },
+      'moy_online_plus': { name: 'Мой онлайн +', m3: [67,202,269], m6: [83,249,333], m12: [95,285,380] },
+      'vezde_online': { name: 'Везде онлайн', m3: [62,185,247], m6: [76,229,305], m12: [87,261,348] },
+      'black': { name: 'Black', m3: [84,252,337], m6: [0,0,0], m12: [0,0,0] },
+    };
+
+    const TITLES = { 
+      equip: 'Оборудование', 
+      acc: 'Аксессуары', 
+      pdu: 'Настройки ПДУ', 
+      ins: 'Страхование', 
+      subs: 'Подписки', 
+      pro32: 'Антивирус PRO32', 
+      cam: 'Умная Камера', 
+      rtk: 'Оборудование РТК', 
+      credit: 'Выдача кредита', 
+      split: 'Яндекс Сплит', 
+      shpd: 'ШПД РТК', 
+      di_t2: 'ДИ Т2', 
+      plotter: 'Пленка', 
+      mnp: 'MNP Перенос', 
+      tradein: 'Trade-In', 
+      vmr_good: 'Хорошая анкета ВМР', 
+      vmr_bad: 'Плохая анкета ВМР' 
+    };
+
+    // ============================================================================
+    // 3. ИКОНКИ 
+    // ============================================================================
+    const Icon = {
+      Pos: () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"/><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"/><path d="M18 12a2 2 0 0 0-2 2c0 1.1.9 2 2 2h4v-4h-4z"/></svg>,
+      Dash: () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>,
+      History: () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+      Team: () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+      Settings: () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
+      Store: () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>,
+      Trash: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>,
+      Plus: () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+      Download: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
+      Upload: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>,
+      Cloud: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>,
+      SunMoon: ({isDark}) => isDark ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg> : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>,
+    };
+
+    // ============================================================================
+    // ОСНОВНОЙ КОМПОНЕНТ APP
+    // ============================================================================
+    function App() {
+      const [activeTab, setActiveTab] = useState('dash');
+      const [isDark, setIsDark] = useLocalStorage('t2_theme_pref', true);
+      const [toast, setToast] = useState({ msg: '', v: false });
+      
+      useEffect(() => {
+        if (isDark) document.documentElement.classList.add('dark');
+        else document.documentElement.classList.remove('dark');
+      }, [isDark]);
+
+      const notify = (msg) => { 
+        setToast({ msg, v: true }); 
+        setTimeout(() => setToast({ msg: '', v: false }), 2200); 
+      };
+
+      const [globalStores, setGlobalStores] = useGlobalSync('store_list', [
+        { id: 'lezhnevskaya', name: 'Иваново • Лежневская 55' }
+      ]);
+      const [currentStoreId, setCurrentStoreId] = useLocalStorage('t2_active_store_id', 'lezhnevskaya');
+
+      const [users, setUsers] = useStoreSyncData(currentStoreId, 'users', [
+        { id: '1', name: 'Соколов В.М.', role: 'ССП', hours: 165 },
+        { id: '2', name: 'Московкин', role: 'СП', hours: 158 },
+      ]);
+      const [currentUserId, setCurrentUserId] = useLocalStorage(`t2_curr_user_${currentStoreId}`, '1');
+      
+      const [storePlans, setStorePlans] = useStoreSyncData(currentStoreId, 'store_plans', { 
+         hoursNorm: 165, equipment: 0, acc: 0, pdu: 0, insurance: 0, subs: 0, rtk: 0, cam: 0, 
+         plotter: 0, credits: 0, shpd: 0, gi: 0, ftp: 0, mnp: 0, abonement: 0, combo: 0 
+      });
+      const [sales, setSales] = useStoreSyncData(currentStoreId, 'sales', []);
+      
+      // НОВАЯ БАЗА ДАННЫХ: Архив зарплат
+      const [salaryHistory, setSalaryHistory] = useStoreSyncData(currentStoreId, 'salary_history', []);
+
+      // Агрегация факта ТТ
+      const storeFacts = useMemo(() => {
+        const f = { equipment:0, acc:0, pdu:0, insurance:0, subs:0, rtk:0, cam:0, plotter:0, credits:0, shpd:0, gi:0, ftp:0, mnp:0, abonement:0, combo:0 };
+        sales.forEach(s => {
+          const amt = Number(s.amount) || 0;
+          if (s.cat === 'equip') f.equipment += amt;
+          if (s.cat === 'acc') f.acc += amt;
+          if (s.cat === 'pdu') f.pdu += amt;
+          if (s.cat === 'plotter') f.plotter += amt;
+          if (s.cat === 'ins') f.insurance += amt;
+          if (s.cat === 'subs' || s.cat === 'pro32') f.subs += amt;
+          if (s.cat === 'cam') f.cam += 1;
+          if (s.cat === 'rtk') f.rtk += amt;
+          if (s.cat === 'credit' || s.cat === 'split') f.credits += amt;
+          if (s.cat === 'shpd' || s.cat === 'di_t2') f.shpd += 1;
+          if (s.cat === 'sim') {
+             f.gi += 1;
+             if (['moy_online_plus', 'vezde_online', 'black', 'combo', 'combo_12m'].includes(s.tariff)) f.ftp += 1;
+             const t = TARIFFS.find(t => t.id === s.tariff);
+             if (t && t.isCombo) f.combo += 1; 
+          }
+          if (s.cat === 'mnp') f.mnp += 1;
+          if (s.cat === 'abonement') f.abonement += 1;
+        });
+        return f;
+      }, [sales]);
+
+      // Расчет процентов выполнения планов
+      const p = useMemo(() => {
+        const pct = {};
+        for (let k in storePlans) { 
+          const target = Number(storePlans[k]) || 0;
+          pct[k] = target > 0 ? (storeFacts[k] || 0) / target : 0; 
+        }
+        return pct;
+      }, [storeFacts, storePlans]);
+
+      // Калькулятор начисления бонусов
+      const calcBonus = useCallback((s) => {
+        const amt = Number(s.amount) || 0;
+        switch (s.cat) {
+          case 'equip': 
+            if (s.isApple) return 0; 
+            let baseEq = p.equipment < 0.8 ? 0.01 : (p.equipment <= 1.1 ? 0.02 : 0.03);
+            if (p.insurance >= 1.20) baseEq += 0.01;
+            return amt * baseEq;
+            
+          case 'acc': return amt * (p.acc < 1.0 ? 0.10 : (p.acc < 1.4 ? 0.13 : 0.17));
+          case 'pdu': return amt * (p.pdu >= 1.0 ? 0.50 : 0.25);
+          case 'plotter': return p.plotter >= 1.0 ? 400 * amt : 250 * amt;
+          case 'ins': 
+            if (p.equipment >= 0.8) {
+               if (p.insurance < 0.8) return amt * 0.05;
+               if (p.insurance < 1.2) return amt * 0.20;
+               if (p.insurance < 1.4) return amt * 0.25;
+               if (p.insurance < 1.5) return amt * 0.35;
+               return amt * 0.45; 
+            } else {
+               if (p.insurance < 0.8) return amt * 0.05;
+               if (p.insurance < 1.2) return amt * 0.12;
+               if (p.insurance < 1.4) return amt * 0.17;
+               return amt * 0.20;
+            }
+          case 'subs': return amt * (p.subs >= 0.8 ? 0.20 : 0.10);
+          case 'pro32': return amt * (p.subs >= 0.8 ? 0.30 : 0.15);
+          
+          case 'rtk': {
+            let baseRtk = 0;
+            const isCamDone = p.cam >= 1.0;
+            const isRtkDone = p.rtk >= 0.8; 
+            if (isCamDone) { baseRtk = isRtkDone ? 0.25 : 0.15; } else { baseRtk = isRtkDone ? 0.15 : 0.12; }
+            if (p.shpd >= 0.8) baseRtk += 0.05; else baseRtk -= 0.05;
+            if (p.subs >= 0.8) baseRtk += 0.05; else baseRtk -= 0.05;
+            if (isCamDone) { baseRtk = Math.max(0.05, Math.min(0.35, baseRtk)); } else { baseRtk = Math.max(0.02, Math.min(0.25, baseRtk)); }
+            return amt * baseRtk;
+          }
+          case 'cam': return 0; 
+          case 'sim': {
+            const t = TARIFFS.find(t => t.id === s.tariff) || TARIFFS[0];
+            const useFtpRates = t.ratesFtp && p.ftp >= 1.0 && p.gi >= 0.95;
+            const activeRates = useFtpRates ? t.ratesFtp : t.rates;
+            let rate = activeRates[0]; 
+            if (p.gi >= 1.1 && activeRates.length > 3) rate = activeRates[3];
+            else if (p.gi >= 1.0 && activeRates.length > 2) rate = activeRates[2];
+            else if (p.gi >= 0.95 && activeRates.length > 1) rate = activeRates[1];
+            if (['moy_online_plus', 'vezde_online', 'black', 'combo'].includes(s.tariff)) {
+               if (p.gi >= 1.0 && p.ftp >= 1.0) { rate = rate * 1.1; }
+            }
+            return s.isRFA ? rate * 0.5 : rate;
+          }
+          case 'abonement': {
+            const ab = ABONEMENTS[s.tariff] || ABONEMENTS['moy_online'];
+            const abRates = ab['m' + s.abMonths] || [0,0,0];
+            return p.gi >= 1.0 ? abRates[2] : (p.gi >= 0.95 ? abRates[1] : abRates[0]);
+          }
+          case 'mnp': return (p.mnp >= 1.0) ? 300 : ((p.mnp >= 0.9) ? 100 : 50);
+          case 'shpd': return (p.shpd >= 0.9) ? 1000 : 400; 
+          case 'di_t2': return (p.shpd >= 0.9) ? 250 : 100;
+          case 'credit': return p.credits >= 1.2 ? 800 : (p.credits >= 1.0 ? 500 : 200);
+          case 'split': return amt * (p.credits >= 1.0 ? 0.02 : 0.01);
+          case 'tradein': return 300 * amt;
+          case 'vmr_good': return 1500 * amt;
+          case 'vmr_bad': return -2000 * amt;
+          default: return 0;
+        }
+      }, [p]);
+
+      const historyList = useMemo(() => {
+        return sales.map(s => {
+           const u = users.find(user => String(user.id) === String(s.userId));
+           let title = TITLES[s.cat] || s.cat;
+           if (s.cat === 'sim') title = TARIFFS.find(t=>t.id===s.tariff)?.name || 'SIM';
+           if (s.cat === 'abonement') title = `${ABONEMENTS[s.tariff]?.name || 'Абонемент'} (${s.abMonths}м)`;
+           if (s.cat === 'equip' && s.isApple) title = 'Техника Apple';
+           const b = calcBonus(s);
+           return { ...s, title, userName: u ? u.name : 'Удален', bonusStr: b };
+        });
+      }, [sales, users, calcBonus]);
+
+      const userStats = useMemo(() => {
+        const hNorm = Number(storePlans.hoursNorm) || 165;
+        return users.map(u => {
+           let st = { ...u, salesBonus: 0, vmrBonus: 0 };
+           sales.filter(s => String(s.userId) === String(u.id)).forEach(s => {
+              const b = calcBonus(s);
+              if (s.cat === 'vmr_good' || s.cat === 'vmr_bad') st.vmrBonus += b;
+              else st.salesBonus += b;
+           });
+           const uHours = Number(u.hours) || 0;
+           st.basePay = Math.min(uHours, hNorm) * 242;
+           st.overworkPay = Math.max(0, uHours - hNorm) * 290;
+           st.totalBase = st.basePay + st.overworkPay;
+           st.finalBonus = Math.max(0, st.salesBonus + st.vmrBonus); 
+           st.totalSalary = st.totalBase + st.finalBonus;
+           return st;
+        });
+      }, [users, sales, storePlans.hoursNorm, calcBonus]);
+
+      const currentUser = userStats.find(u => String(u.id) === String(currentUserId)) || userStats[0] || {};
+      const currentStore = globalStores.find(s => s.id === currentStoreId) || globalStores[0];
+
+      // ФУНКЦИЯ: Закрытие месяца и перенос в архив
+      const closeMonth = () => {
+         if(confirm('Закрыть текущий месяц? Зарплаты сотрудников будут сохранены в архив, а касса обнулена для нового месяца.')) {
+            const archiveRecord = {
+               id: generateId(),
+               period: `${monthName} ${today.getFullYear()}`,
+               timestamp: new Date().getTime(),
+               employees: userStats.map(u => ({
+                  id: u.id,
+                  name: u.name,
+                  role: u.role,
+                  salary: u.totalSalary,
+                  base: u.totalBase,
+                  bonus: u.finalBonus,
+                  hours: u.hours
+               }))
+            };
+            setSalaryHistory(prev => [archiveRecord, ...prev]);
+            setSales([]);
+            notify('Месяц закрыт, данные перенесены в архив!');
+         }
+      };
+
+      return (
+        <div className="flex-1 flex flex-col h-full bg-gray-50 dark:bg-[#111] text-gray-900 dark:text-white transition-colors duration-300">
+          <div className={`absolute top-14 left-1/2 -translate-x-1/2 z-[100] transition-all duration-300 ${toast.v ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`}>
+             <div className="bg-t2-pink text-white px-5 py-2.5 rounded-full shadow-2xl font-bold text-xs tracking-wide">{toast.msg}</div>
+          </div>
+
+          <header className="bg-white dark:bg-[#111] shadow-sm dark:shadow-none border-b border-gray-100 dark:border-[#222] px-4 py-3.5 z-10 flex justify-between items-center sticky top-0 transition-colors">
+            <div className="flex-1 overflow-hidden pr-2">
+              <div className="flex items-center space-x-2">
+                 <h1 className="text-xl font-black tracking-tight leading-none text-t2-black dark:text-white">t2<span className="font-medium text-gray-500"> point</span></h1>
+                 {isCloudOnline && <div className="flex items-center text-[9px] text-green-500 bg-green-100 dark:bg-green-950/40 px-2 py-0.5 rounded-full font-bold space-x-1"><Icon.Cloud/><span>Online</span></div>}
+              </div>
+              <div className="text-[9px] text-t2-pink font-bold uppercase tracking-wider mt-1 truncate leading-none">
+                 {currentStore ? currentStore.name : 'Салон t2'}
+              </div>
+            </div>
+            
+            <div className="flex items-center space-x-2 flex-shrink-0">
+               <button onClick={()=>setIsDark(!isDark)} className="w-9 h-9 flex items-center justify-center bg-gray-100 dark:bg-[#1E1E1E] rounded-full text-gray-600 dark:text-gray-400 active:scale-95 transition-transform flex-shrink-0">
+                 <Icon.SunMoon isDark={isDark} />
+               </button>
+               {users.length > 0 && (
+                 <select value={currentUserId} onChange={(e) => setCurrentUserId(e.target.value)} className="h-9 max-w-[110px] bg-gray-100 dark:bg-[#1E1E1E] text-t2-black dark:text-white text-xs font-bold px-3 rounded-xl outline-none border border-transparent focus:border-t2-pink appearance-none cursor-pointer truncate flex items-center">
+                   {users.map(u => <option key={u.id} value={u.id}>{u.name.split(' ')[0]}</option>)}
+                 </select>
+               )}
+            </div>
+          </header>
+
+          <main className="flex-1 overflow-y-auto px-4 py-3.5 pb-28 hide-scroll">
+            {activeTab === 'pos' && (
+                users.length > 0 ? 
+                <POSView onAdd={(d) => { 
+                    const now = new Date();
+                    const dateStr = `${String(now.getDate()).padStart(2, '0')}.${String(now.getMonth()+1).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+                    setSales(prev => [{ ...d, id: generateId(), userId: currentUserId, date: dateStr }, ...prev]); 
+                    notify('Чек добавлен'); 
+                }} /> 
+                : <div className="p-10 text-center text-gray-400 font-bold text-sm">Добавьте сотрудника во вкладке «Смена»</div>
+            )}
+            {activeTab === 'dash' && (currentUser.id ? <DashboardView stats={currentUser} p={p} storeFacts={storeFacts} storePlans={storePlans} /> : <div className="p-10 text-center text-gray-400 font-bold text-sm">Нет активных сотрудников</div>)}
+            {activeTab === 'history' && <HistoryView users={users} historyList={historyList} onRemove={(id) => {if(confirm('Удалить эту операцию?')) {setSales(prev => prev.filter(s => s.id !== id)); notify('Удалено');}}} />}
+            {activeTab === 'team' && <TeamView users={userStats} setUsers={setUsers} notify={notify} salaryHistory={salaryHistory} />}
+            {activeTab === 'settings' && <AdminView storePlans={storePlans} setStorePlans={setStorePlans} closeMonth={closeMonth} notify={notify} dataToBackup={{users, storePlans, sales, salaryHistory}} setUsers={setUsers} setSales={setSales} setSalaryHistory={setSalaryHistory} />}
+            {activeTab === 'stores' && <StoresView globalStores={globalStores} setGlobalStores={setGlobalStores} currentStoreId={currentStoreId} setCurrentStoreId={(id) => {setCurrentStoreId(id); setActiveTab('dash'); notify('Салон изменён');}} />}
+          </main>
+
+          <nav className="absolute bottom-4 left-3 right-3 bg-white dark:bg-[#1E1E1E] rounded-3xl flex justify-between p-1.5 z-50 shadow-glass dark:shadow-[0_10px_35px_rgba(0,0,0,0.45)] border border-gray-100 dark:border-[#2A2A2A] transition-colors">
+            <NavBtn icon={<Icon.Dash/>} label="Премия" isActive={activeTab==='dash'} onClick={()=>setActiveTab('dash')} />
+            <NavBtn icon={<Icon.History/>} label="История" isActive={activeTab==='history'} onClick={()=>setActiveTab('history')} />
+            <NavBtn icon={<Icon.Pos/>} label="Касса" isActive={activeTab==='pos'} onClick={()=>setActiveTab('pos')} />
+            <NavBtn icon={<Icon.Team/>} label="Смена" isActive={activeTab==='team'} onClick={()=>setActiveTab('team')} />
+            <NavBtn icon={<Icon.Store/>} label="Салоны" isActive={activeTab==='stores'} onClick={()=>setActiveTab('stores')} />
+            <NavBtn icon={<Icon.Settings/>} label="Настр" isActive={activeTab==='settings'} onClick={()=>setActiveTab('settings')} />
+          </nav>
+        </div>
+      );
+    }
+
+    const NavBtn = ({ icon, label, isActive, onClick }) => (
+      <button onClick={onClick} className={`flex-1 flex flex-col items-center justify-center py-2.5 rounded-2xl transition-all duration-200 ${isActive ? 'text-white bg-t2-pink shadow-sm' : 'text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
+         {icon} <span className="text-[8px] font-bold uppercase mt-1 tracking-wider leading-none">{label}</span>
+      </button>
+    );
+
+    // ============================================================================
+    // УПРАВЛЕНИЕ САЛОНАМИ
+    // ============================================================================
+    function StoresView({ globalStores, setGlobalStores, currentStoreId, setCurrentStoreId }) {
+       const [showAdd, setShowAdd] = useState(false);
+       const [newStoreName, setNewStoreName] = useState('');
+
+       const handleAddStore = () => {
+          if (!newStoreName.trim()) return;
+          const newId = 'store_' + generateId();
+          setGlobalStores([...globalStores, { id: newId, name: newStoreName.trim() }]);
+          setNewStoreName('');
+          setShowAdd(false);
+          setCurrentStoreId(newId);
+       };
+
+       return (
+          <div className="animate-slide-up pb-8">
+             <div className="flex justify-between items-center mb-5">
+                <h2 className="text-2xl font-black tracking-tight text-t2-black dark:text-white">Салоны сети</h2>
+                <button onClick={()=>setShowAdd(!showAdd)} className="bg-t2-pink text-white p-2 rounded-full shadow-sm active:scale-95 transition-transform"><Icon.Plus/></button>
+             </div>
+
+             {showAdd && (
+                <div className="bg-white dark:bg-[#1E1E1E] p-4 rounded-2xl mb-5 border border-t2-pink shadow-sm">
+                   <h3 className="text-xs font-black uppercase mb-2 text-t2-pink">Новая торговая точка</h3>
+                   <input value={newStoreName} onChange={e=>setNewStoreName(e.target.value)} placeholder="Название (например: ТЦ Серебряный Город)" className="w-full p-3 bg-gray-50 dark:bg-[#111] rounded-xl outline-none font-bold text-sm mb-3 text-t2-black dark:text-white border border-gray-200 dark:border-transparent focus:border-t2-pink" />
+                   <button onClick={handleAddStore} className="w-full bg-t2-black dark:bg-white text-white dark:text-black font-black py-2.5 rounded-xl active:scale-95 text-xs uppercase tracking-wide">Создать и перейти</button>
+                </div>
+             )}
+
+             <div className="space-y-2.5">
+                {globalStores.map(store => (
+                   <button key={store.id} onClick={()=>setCurrentStoreId(store.id)} className={`w-full text-left p-4 rounded-2xl border transition-all ${currentStoreId === store.id ? 'bg-pink-50/50 dark:bg-[#2A111E] border-t2-pink' : 'bg-white dark:bg-[#1E1E1E] border-gray-100 dark:border-[#2A2A2A]'}`}>
+                      <div className="flex items-center space-x-3.5">
+                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${currentStoreId === store.id ? 'bg-t2-pink text-white' : 'bg-gray-100 dark:bg-[#111] text-gray-500'}`}>
+                            <Icon.Store />
+                         </div>
+                         <div className="overflow-hidden">
+                            <div className={`font-black text-sm truncate ${currentStoreId === store.id ? 'text-t2-pink' : 'text-t2-black dark:text-white'}`}>{store.name}</div>
+                            {currentStoreId === store.id && <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">Активная точка</div>}
+                         </div>
+                      </div>
+                   </button>
+                ))}
+             </div>
+          </div>
+       );
+    }
+
+    // ============================================================================
+    // КАССА
+    // ============================================================================
+    function POSView({ onAdd }) {
+      const [mainCat, setMainCat] = useState('comm');
+      const [subCat, setSubCat] = useState('sim');
+      const [amount, setAmount] = useState('');
+      const [tariff, setTariff] = useState('moy_online');
+      const [abMonths, setAbMonths] = useState(3);
+      const [isApple, setIsApple] = useState(false);
+      const [isRFA, setIsRFA] = useState(false);
+      const [isSubmitting, setIsSubmitting] = useState(false); 
+
+      const handleSubmit = (e) => {
+         e.preventDefault();
+         if (isSubmitting) return;
+         
+         let amt = parseFloat(amount) || 0;
+         if(['sim','mnp','shpd','di_t2','plotter','cam','tradein','abonement','vmr_good','vmr_bad'].includes(subCat)) {
+           amt = 1;
+         }
+         
+         if(amt <= 0) return;
+
+         setIsSubmitting(true);
+         onAdd({ cat: subCat, amount: amt, tariff, abMonths, isApple, isRFA });
+         setAmount(''); 
+         setIsApple(false); 
+         setIsRFA(false);
+         setTimeout(() => setIsSubmitting(false), 350);
+      };
+
+      const MainTab = ({ id, label }) => (
+        <button type="button" onClick={()=>{setMainCat(id); setSubCat(''); setAmount('');}} className={`px-3.5 py-2 rounded-xl font-bold text-[11px] uppercase tracking-wide border transition-all ${mainCat === id ? 'bg-t2-black text-white dark:bg-white dark:text-black border-transparent shadow-sm' : 'bg-white dark:bg-[#1E1E1E] text-gray-500 border-gray-200 dark:border-transparent'}`}>{label}</button>
+      );
+      
+      const SubBtn = ({ id, label }) => (
+        <button type="button" onClick={()=>setSubCat(id)} className={`p-3.5 rounded-2xl font-bold text-xs text-left flex flex-col justify-end h-20 border-2 transition-all ${subCat === id ? 'border-t2-pink bg-pink-50/60 dark:bg-[#2A111E] text-t2-pink' : 'border-transparent bg-white dark:bg-[#1E1E1E] text-gray-700 dark:text-gray-300 shadow-sm'}`}><span className="leading-snug">{label}</span></button>
+      );
+
+      return (
+         <div className="animate-slide-up pb-8">
+            <h2 className="text-2xl font-black mb-4 tracking-tight text-t2-black dark:text-white">Оформление продажи</h2>
+            <div className="flex space-x-2 overflow-x-auto pb-3 mb-2 hide-scroll">
+               <MainTab id="comm" label="Связь" />
+               <MainTab id="goods" label="Товары" />
+               <MainTab id="serv" label="Сервисы" />
+               <MainTab id="fin" label="Финансы" />
+               <MainTab id="vmr" label="ВМР" />
+            </div>
+
+            <form onSubmit={handleSubmit}>
+               <div className="grid grid-cols-2 gap-2.5 mb-5">
+                  {mainCat === 'comm' && <><SubBtn id="sim" label="Сим (GI)" /><SubBtn id="mnp" label="MNP" /><div className="col-span-2"><SubBtn id="abonement" label="Абонемент" /></div></>}
+                  {mainCat === 'goods' && <><SubBtn id="equip" label="Оборудование" /><SubBtn id="acc" label="Аксессуары" /></>}
+                  {mainCat === 'serv' && <><SubBtn id="ins" label="Страхование" /><SubBtn id="subs" label="Подписки (Wink и др.)" /><SubBtn id="pro32" label="Антивирус PRO32" /><SubBtn id="pdu" label="Настройки ПДУ" /><SubBtn id="shpd" label="ШПД РТК / ДИ" /><SubBtn id="rtk" label="Оборуд. РТК (₽)" /><SubBtn id="cam" label="Умная Камера" /><SubBtn id="plotter" label="Пленка" /></>}
+                  {mainCat === 'fin' && <><SubBtn id="credit" label="Кредит (Сумма в ₽)" /><SubBtn id="split" label="Яндекс Сплит (₽)" /><div className="col-span-2"><SubBtn id="tradein" label="Trade-In" /></div></>}
+                  {mainCat === 'vmr' && <><SubBtn id="vmr_good" label="Хорошая анкета (+1500 ₽)" /><SubBtn id="vmr_bad" label="Плохая анкета (-2000 ₽)" /></>}
+               </div>
+
+               {!['sim','mnp','abonement','shpd','plotter','cam','tradein', 'vmr_good', 'vmr_bad'].includes(subCat) && subCat !== '' && (
+                  <div className="mb-5 relative">
+                     <span className="absolute left-4 top-3.5 text-lg text-gray-400 font-black">₽</span>
+                     <input type="number" inputMode="decimal" min="0" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="Сумма в рублях" className="w-full pl-10 pr-4 py-3.5 bg-white dark:bg-[#1E1E1E] text-2xl font-black text-t2-black dark:text-white rounded-2xl outline-none shadow-sm border border-gray-200 dark:border-transparent focus:border-t2-pink transition-all" autoFocus required/>
+                  </div>
+               )}
+
+               {subCat === 'sim' && (
+                  <div className="mb-5 space-y-3">
+                     <select value={tariff} onChange={e=>setTariff(e.target.value)} className="w-full p-3.5 bg-white dark:bg-[#1E1E1E] rounded-xl font-bold outline-none border border-gray-200 dark:border-transparent shadow-sm text-sm text-t2-black dark:text-white">
+                        {TARIFFS.map(t => <option key={t.id} value={t.id}>{t.name} {t.isFTP ? '🔥' : ''}</option>)}
+                     </select>
+                     <label className="flex items-center space-x-3 p-3.5 bg-white dark:bg-[#1E1E1E] rounded-xl border border-gray-200 dark:border-transparent shadow-sm cursor-pointer">
+                        <input type="checkbox" checked={isRFA} onChange={e=>setIsRFA(e.target.checked)} className="w-4 h-4 accent-t2-pink rounded" />
+                        <span className="font-bold text-xs text-t2-black dark:text-white">Бумажный бланк РФА (КФ 0.5)</span>
+                     </label>
+                  </div>
+               )}
+
+               {subCat === 'abonement' && (
+                  <div className="mb-5 space-y-3">
+                     <select value={tariff} onChange={e=>setTariff(e.target.value)} className="w-full p-3.5 bg-white dark:bg-[#1E1E1E] rounded-xl font-bold outline-none border border-gray-200 dark:border-transparent shadow-sm text-sm text-t2-black dark:text-white">
+                        {Object.entries(ABONEMENTS).map(([k, v]) => <option key={k} value={k}>{v.name}</option>)}
+                     </select>
+                     <div className="flex space-x-2 bg-gray-100 dark:bg-[#111] p-1 rounded-xl">
+                        {[3, 6, 12].map(m => <button key={m} type="button" onClick={()=>setAbMonths(m)} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${abMonths===m ? 'bg-white text-t2-pink shadow-sm dark:bg-[#1E1E1E]' : 'text-gray-400'}`}>{m} мес.</button>)}
+                     </div>
+                  </div>
+               )}
+
+               {subCat === 'equip' && (
+                  <label className="flex items-center space-x-3 p-3.5 bg-white dark:bg-[#1E1E1E] rounded-xl mb-5 border border-gray-200 dark:border-transparent shadow-sm cursor-pointer">
+                     <input type="checkbox" checked={isApple} onChange={e=>setIsApple(e.target.checked)} className="w-4 h-4 accent-t2-pink rounded" />
+                     <span className="font-bold text-xs text-t2-black dark:text-white">Техника Apple (Без премиальной части)</span>
+                  </label>
+               )}
+
+               <button type="submit" disabled={!subCat || isSubmitting} className="w-full bg-t2-pink disabled:opacity-40 text-white text-sm font-black uppercase tracking-wider py-3.5 rounded-2xl active:scale-95 transition-all shadow-sm">Добавить в чек</button>
+            </form>
+         </div>
+      );
+    }
+
+    // ============================================================================
+    // ИСТОРИЯ ПРОДАЖ (С ФИЛЬТРОМ)
+    // ============================================================================
+    function HistoryView({ historyList, onRemove, users }) {
+      const [filterUser, setFilterUser] = useState('all');
+
+      const filteredList = useMemo(() => {
+        if (filterUser === 'all') return historyList;
+        return historyList.filter(h => String(h.userId) === String(filterUser));
+      }, [historyList, filterUser]);
+
+      const totalBonusFiltered = useMemo(() => {
+        return filteredList.reduce((acc, curr) => acc + (Number(curr.bonusStr) || 0), 0);
+      }, [filteredList]);
+
+      return (
+         <div className="animate-slide-up pb-8">
+            <div className="flex justify-between items-end mb-4">
+               <div>
+                  <h2 className="text-2xl font-black tracking-tight text-t2-black dark:text-white">История продаж</h2>
+                  <div className="text-[10px] font-bold text-gray-400 mt-0.5">Всего в выборке: <span className="text-green-500 font-black">+{Math.round(totalBonusFiltered).toLocaleString('ru-RU')} ₽</span></div>
+               </div>
+               <div className="text-[10px] font-bold text-t2-pink uppercase tracking-widest bg-pink-50 dark:bg-[#2A111E] px-2 py-1 rounded-lg">
+                  {filteredList.length} чеков
+               </div>
+            </div>
+
+            <div className="flex space-x-1.5 overflow-x-auto pb-3 mb-2 hide-scroll">
+               <button onClick={()=>setFilterUser('all')} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border transition-all ${filterUser === 'all' ? 'bg-t2-black text-white dark:bg-white dark:text-black border-transparent' : 'bg-white dark:bg-[#1E1E1E] text-gray-400 border-gray-100 dark:border-transparent'}`}>Все</button>
+               {users.map(u => (
+                 <button key={u.id} onClick={()=>setFilterUser(u.id)} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border transition-all ${filterUser === u.id ? 'bg-t2-black text-white dark:bg-white dark:text-black border-transparent' : 'bg-white dark:bg-[#1E1E1E] text-gray-400 border-gray-100 dark:border-transparent'}`}>{u.name.split(' ')[0]}</button>
+               ))}
+            </div>
+            
+            <div className="space-y-2.5">
+               {filteredList.length === 0 && <div className="text-center text-gray-400 text-xs font-bold py-10">Нет сохранённых операций</div>}
+               {filteredList.slice().reverse().map((h) => (
+                  <div key={h.id} className="bg-white dark:bg-[#1E1E1E] p-3.5 rounded-2xl border border-gray-100 dark:border-[#2A2A2A] shadow-sm transition-colors">
+                     <div className="flex justify-between items-center mb-2 border-b border-gray-100 dark:border-[#2A2A2A] pb-1.5">
+                        <div className="flex items-center space-x-2">
+                           <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black ${h.userName === 'Удален' ? 'bg-red-100 text-red-500' : 'bg-gray-100 dark:bg-[#111] text-gray-600 dark:text-gray-300'}`}>
+                              {h.userName.charAt(0)}
+                           </div>
+                           <span className={`text-[10px] font-bold uppercase tracking-wider ${h.userName === 'Удален' ? 'text-red-500' : 'text-gray-500 dark:text-gray-400'}`}>{h.userName}</span>
+                        </div>
+                        <span className="text-[9px] font-bold text-gray-400">{h.date}</span>
+                     </div>
+                     <div className="flex justify-between items-center">
+                        <div>
+                           <div className="font-bold text-xs leading-snug text-t2-black dark:text-gray-200">{h.title}</div>
+                           <div className="text-[9px] font-bold text-gray-400 uppercase mt-0.5">{h.amount.toLocaleString('ru-RU')} {h.cat === 'equip' || h.cat === 'acc' || h.cat === 'pdu' || h.cat === 'ins' || h.cat === 'subs' || h.cat === 'pro32' || h.cat === 'rtk' || h.cat === 'credit' || h.cat === 'split' ? '₽' : 'шт'}</div>
+                        </div>
+                        <div className="flex items-center space-x-2.5">
+                           <div className={`font-black text-sm ${h.bonusStr > 0 ? 'text-green-500' : (h.bonusStr < 0 ? 'text-red-500' : 'text-gray-400')}`}>
+                              {h.bonusStr > 0 ? '+' : ''}{Math.round(h.bonusStr).toLocaleString('ru-RU')} ₽
+                           </div>
+                           <button onClick={()=>onRemove(h.id)} className="text-gray-300 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-500 p-1"><Icon.Trash/></button>
+                        </div>
+                     </div>
+                  </div>
+               ))}
+            </div>
+         </div>
+      );
+    }
+
+    // ============================================================================
+    // ДАШБОРД (ПРЕМИЯ И ПЛАНЫ)
+    // ============================================================================
+    function DashboardView({ stats, storeFacts, storePlans }) {
+      const runRatePct = currentDay / daysInMonth;
+
+      const RunRateBar = ({ id, label, unit, color }) => {
+         const planMonth = Number(storePlans[id]) || 0;
+         const factTotal = Number(storeFacts[id]) || 0;
+         
+         const planToDate = planMonth > 0 ? (planMonth / daysInMonth) * currentDay : 0;
+         const pctMonth = planMonth > 0 ? (factTotal / planMonth) * 100 : 0;
+         const pctRunRate = planToDate > 0 ? (factTotal / planToDate) * 100 : 0; 
+         
+         const isCompleted = planMonth > 0 && pctMonth >= 100;
+         const isOnTrack = planMonth > 0 && pctRunRate >= 100;
+
+         return (
+            <div className="bg-white dark:bg-[#1E1E1E] p-3.5 rounded-2xl mb-2.5 border border-gray-100 dark:border-[#2A2A2A] shadow-sm transition-colors">
+               <div className="flex justify-between items-center mb-1">
+                  <div className="font-bold text-[10px] uppercase text-gray-400">{label}</div>
+                  <div className={`text-xs font-black ${isCompleted ? 'text-green-500' : (isOnTrack ? 'text-t2-black dark:text-white' : 'text-red-500')}`}>
+                     {planMonth > 0 ? `${pctRunRate.toFixed(0)}% (отсечка)` : 'ПЛАН 0'}
+                  </div>
+               </div>
+               <div className="flex items-end space-x-1 mb-2">
+                  <span className="text-lg font-black text-t2-black dark:text-white">{factTotal.toLocaleString('ru-RU')}</span>
+                  <span className="text-xs text-gray-400 font-bold mb-0.5">/ {planMonth.toLocaleString('ru-RU')} {unit}</span>
+               </div>
+               
+               <div className="relative w-full bg-gray-100 dark:bg-[#111] h-2 rounded-full mb-1 overflow-hidden">
+                  <div className={`absolute top-0 left-0 h-full rounded-full transition-all ${isCompleted ? 'bg-green-500' : color}`} style={{width: `${Math.min(pctMonth, 100)}%`}}></div>
+                  <div className="absolute top-0 bottom-0 w-1 bg-t2-black dark:bg-white z-10" style={{left: `${runRatePct * 100}%`}}></div>
+               </div>
+               <div className="text-[9px] font-bold text-gray-400 text-right uppercase">Отсечка сегодня: {Math.round(planToDate).toLocaleString('ru-RU')}</div>
+            </div>
+         );
+      };
+
+      const runRateMetrics = [
+        { id: 'equipment', label: 'Оборудование', unit: '₽', color: 'bg-blue-500' },
+        { id: 'acc', label: 'Аксессуары', unit: '₽', color: 'bg-purple-500' },
+        { id: 'pdu', label: 'ПДУ / Настройки', unit: '₽', color: 'bg-cyan-500' },
+        { id: 'insurance', label: 'Страхование', unit: '₽', color: 'bg-emerald-500' },
+        { id: 'subs', label: 'Подписки (+ PRO32)', unit: '₽', color: 'bg-amber-500' },
+        { id: 'rtk', label: 'Оборудование РТК', unit: '₽', color: 'bg-orange-500' },
+        { id: 'cam', label: 'Умные Камеры', unit: 'шт', color: 'bg-teal-500' },
+        { id: 'plotter', label: 'Пленки (Резка)', unit: 'шт', color: 'bg-indigo-400' },
+        { id: 'gi', label: 'Сим-карты (GI)', unit: 'шт', color: 'bg-t2-pink' },
+        { id: 'ftp', label: 'Фокусные ТП (ФТП)', unit: 'шт', color: 'bg-rose-500' },
+        { id: 'mnp', label: 'MNP', unit: 'шт', color: 'bg-red-500' },
+        { id: 'abonement', label: 'Абонементы', unit: 'шт', color: 'bg-fuchsia-500' },
+        { id: 'combo', label: 'Комбо (ТП)', unit: 'шт', color: 'bg-fuchsia-600' },
+        { id: 'shpd', label: 'ШПД РТК / ДИ', unit: 'шт', color: 'bg-sky-500' },
+        { id: 'credits', label: 'Кредиты (Объём)', unit: '₽', color: 'bg-yellow-500' },
+      ];
+
+      return (
+         <div className="animate-slide-up pb-8">
+            <div className="bg-white dark:bg-[#1E1E1E] p-5 mb-6 rounded-3xl border border-gray-100 dark:border-[#2A2A2A] shadow-glass relative overflow-hidden transition-colors">
+               <div className="absolute top-0 right-0 w-36 h-36 bg-t2-pink rounded-full blur-[60px] opacity-15 pointer-events-none"></div>
+               <div className="text-[10px] uppercase font-bold text-gray-400 tracking-widest mb-1 relative z-10">Итого к выплате ({stats.name})</div>
+               <div className="text-3xl font-black text-t2-black dark:text-white mb-3.5 relative z-10">{Math.round(stats.totalSalary).toLocaleString('ru-RU')} ₽</div>
+               
+               <div className="space-y-1.5 relative z-10 text-xs font-bold border-t border-gray-100 dark:border-[#2A2A2A] pt-3">
+                  <div className="flex justify-between"><span className="text-gray-400">Окладная часть ({stats.hours}ч)</span><span className="text-t2-black dark:text-white">{Math.round(stats.basePay).toLocaleString('ru-RU')} ₽</span></div>
+                  {stats.overworkPay > 0 && <div className="flex justify-between"><span className="text-gray-400">Переработка</span><span className="text-blue-500">+{Math.round(stats.overworkPay).toLocaleString('ru-RU')} ₽</span></div>}
+                  <div className="flex justify-between"><span className="text-gray-400">Премиальная часть</span><span className="text-t2-pink">+{Math.round(stats.salesBonus).toLocaleString('ru-RU')} ₽</span></div>
+                  {stats.vmrBonus !== 0 && (
+                     <div className="flex justify-between"><span className="text-gray-400">ВМР Коррекция</span><span className={stats.vmrBonus > 0 ? "text-green-500" : "text-red-500"}>{stats.vmrBonus > 0 ? '+' : ''}{Math.round(stats.vmrBonus).toLocaleString('ru-RU')} ₽</span></div>
+                  )}
+               </div>
+            </div>
+
+            <div className="flex justify-between items-end mb-3 px-1">
+               <h2 className="text-lg font-black tracking-tight text-t2-black dark:text-white">Run Rate салона</h2>
+               <div className="text-[9px] font-bold text-t2-pink uppercase tracking-widest bg-pink-50 dark:bg-[#2A111E] px-2 py-0.5 rounded-md">
+                  {monthName} • День {currentDay} из {daysInMonth}
+               </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-2.5">
+               {runRateMetrics.map(m => (
+                  <RunRateBar key={m.id} id={m.id} label={m.label} unit={m.unit} color={m.color} />
+               ))}
+            </div>
+         </div>
+      );
+    }
+
+    // ============================================================================
+    // СМЕНА (СОТРУДНИКИ И АРХИВ ЗАРПЛАТ)
+    // ============================================================================
+    function TeamView({ users, setUsers, notify, salaryHistory }) {
+       const [showAdd, setShowAdd] = useState(false);
+       const [showArchive, setShowArchive] = useState(false);
+       const [newName, setNewName] = useState('');
+       const [newRole, setNewRole] = useState('СП');
+
+       const handleAddUser = () => {
+          if(!newName.trim()) return;
+          setUsers(prev => [...prev, { id: generateId(), name: newName.trim(), role: newRole, hours: 165 }]);
+          setNewName(''); 
+          setShowAdd(false); 
+          notify('Сотрудник добавлен');
+       };
+
+       const updateHrs = (id, v) => {
+         const val = Math.max(0, Number(v) || 0);
+         setUsers(prev => prev.map(u => String(u.id) === String(id) ? {...u, hours: val} : u));
+       };
+
+       const removeUser = (id) => { 
+         if(confirm('Удалить сотрудника из смены?')) {
+           setUsers(prev => prev.filter(u => String(u.id) !== String(id))); 
+         }
+       };
+
+       return (
+          <div className="animate-slide-up pb-8">
+             <div className="flex justify-between items-center mb-5">
+                <h2 className="text-2xl font-black tracking-tight text-t2-black dark:text-white">Сотрудники салона</h2>
+                <button onClick={()=>setShowAdd(!showAdd)} className="bg-t2-pink text-white p-2 rounded-full shadow-sm active:scale-95 transition-transform"><Icon.Plus/></button>
+             </div>
+
+             {showAdd && (
+                <div className="bg-white dark:bg-[#1E1E1E] p-4 rounded-2xl mb-5 border border-t2-pink shadow-sm">
+                   <h3 className="text-xs font-black uppercase mb-2 text-t2-pink">Новый сотрудник</h3>
+                   <input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="Фамилия И.О." className="w-full p-3 bg-gray-50 dark:bg-[#111] rounded-xl outline-none font-bold text-sm mb-2.5 text-t2-black dark:text-white border border-gray-200 dark:border-transparent focus:border-t2-pink" />
+                   <select value={newRole} onChange={e=>setNewRole(e.target.value)} className="w-full p-3 bg-gray-50 dark:bg-[#111] rounded-xl outline-none font-bold text-sm mb-3 text-t2-black dark:text-white border border-gray-200 dark:border-transparent">
+                      <option>Стажер</option><option>СП</option><option>ССП</option>
+                   </select>
+                   <button onClick={handleAddUser} className="w-full bg-t2-black dark:bg-white text-white dark:text-black font-black py-2.5 rounded-xl active:scale-95 text-xs uppercase tracking-wide">Сохранить</button>
+                </div>
+             )}
+
+             <div className="space-y-3">
+                {users.map(u => (
+                   <div key={u.id} className="bg-white dark:bg-[#1E1E1E] p-4 rounded-2xl border border-gray-100 dark:border-[#2A2A2A] shadow-sm transition-colors">
+                      <div className="flex justify-between items-center">
+                         <div>
+                            <div className="font-black text-base text-t2-black dark:text-white">{u.name}</div>
+                            <div className="text-[9px] font-bold bg-gray-100 dark:bg-[#2A2A2A] text-gray-500 dark:text-gray-300 px-2 py-0.5 rounded-md uppercase mt-1 inline-block">{u.role}</div>
+                         </div>
+                         <div className="flex flex-col items-end">
+                            <button onClick={()=>removeUser(u.id)} className="text-gray-300 hover:text-red-500 mb-1"><Icon.Trash/></button>
+                            <div className="relative mt-1">
+                               <input type="number" inputMode="numeric" min="0" value={u.hours} onChange={e=>updateHrs(u.id, e.target.value)} className="w-16 text-2xl font-black text-right pr-4 bg-transparent outline-none text-t2-black dark:text-white border-b border-t2-pink" />
+                               <span className="absolute right-0 bottom-1 text-xs font-bold text-gray-400">ч</span>
+                            </div>
+                         </div>
+                      </div>
+                   </div>
+                ))}
+             </div>
+
+             {/* НОВЫЙ БЛОК: Архив Зарплат */}
+             {salaryHistory && salaryHistory.length > 0 && (
+                <div className="mt-8">
+                   <button onClick={()=>setShowArchive(!showArchive)} className="w-full flex justify-between items-center bg-gray-100 dark:bg-[#1E1E1E] p-4 rounded-2xl text-t2-black dark:text-white font-black text-sm active:scale-95 transition-transform">
+                      <span>Архив зарплат ({salaryHistory.length})</span>
+                      <span className="text-t2-pink text-xs uppercase tracking-wider">{showArchive ? 'Скрыть' : 'Открыть'}</span>
+                   </button>
+                   
+                   {showArchive && (
+                      <div className="mt-3 space-y-3">
+                         {salaryHistory.map(arch => (
+                            <div key={arch.id} className="p-4 bg-white dark:bg-[#111] rounded-2xl border border-gray-200 dark:border-[#2A2A2A]">
+                               <div className="text-xs font-black text-t2-pink uppercase tracking-widest mb-3">{arch.period}</div>
+                               <div className="space-y-3">
+                                  {arch.employees.map(e => (
+                                     <div key={e.id} className="flex justify-between items-center border-b border-gray-50 dark:border-[#222] pb-3 last:border-0 last:pb-0">
+                                        <div>
+                                           <div className="text-sm font-bold text-t2-black dark:text-white">{e.name}</div>
+                                           <div className="text-[9px] font-bold text-gray-400 uppercase mt-0.5">{e.role} • {e.hours}ч</div>
+                                        </div>
+                                        <div className="text-right">
+                                           <div className="text-sm font-black text-t2-black dark:text-white">{Math.round(e.salary).toLocaleString('ru-RU')} ₽</div>
+                                           <div className="text-[9px] font-bold text-gray-400 uppercase mt-0.5">Оклад: {Math.round(e.base).toLocaleString('ru-RU')} / Премия: {Math.round(e.bonus).toLocaleString('ru-RU')}</div>
+                                        </div>
+                                     </div>
+                                  ))}
+                               </div>
+                            </div>
+                         ))}
+                      </div>
+                   )}
+                </div>
+             )}
+          </div>
+       );
+    }
+
+    // ============================================================================
+    // НАСТРОЙКИ И ПЛАНЫ
+    // ============================================================================
+    function AdminView({ storePlans, setStorePlans, closeMonth, notify, dataToBackup, setUsers, setSales, setSalaryHistory }) {
+      const fileInputRef = useRef(null);
+
+      const exportData = () => {
+         const blob = new Blob([JSON.stringify(dataToBackup, null, 2)], {type: "application/json"});
+         const url = URL.createObjectURL(blob);
+         const a = document.createElement('a'); a.href = url; a.download = `t2_backup_${new Date().toISOString().slice(0,10)}.json`; a.click();
+      };
+
+      const importData = (e) => {
+         const file = e.target.files[0];
+         if(!file) return;
+         const reader = new FileReader();
+         reader.onload = (event) => {
+            try {
+               const data = JSON.parse(event.target.result);
+               if(data.users) setUsers(data.users);
+               if(data.sales) setSales(data.sales);
+               if(data.storePlans) setStorePlans(data.storePlans);
+               if(data.salaryHistory) setSalaryHistory(data.salaryHistory);
+               notify('База восстановлена');
+            } catch { alert('Ошибка чтения файла резервной копии'); }
+         };
+         reader.readAsText(file);
+      };
+
+      return (
+         <div className="animate-slide-up pb-8">
+            <h2 className="text-2xl font-black mb-5 tracking-tight text-t2-black dark:text-white">Параметры и планы</h2>
+
+            <div className="bg-white dark:bg-[#1E1E1E] p-4 rounded-2xl mb-4 shadow-sm border border-gray-100 dark:border-[#2A2A2A] transition-colors">
+               <h3 className="text-xs font-black uppercase tracking-wider mb-3 text-green-500">Резервная копия</h3>
+               <div className="flex space-x-2">
+                  <button onClick={exportData} className="flex-1 bg-gray-50 dark:bg-[#111] text-t2-black dark:text-white font-bold text-[10px] uppercase py-3 rounded-xl flex justify-center items-center space-x-1.5 border border-gray-200 dark:border-[#333] active:scale-95"><Icon.Download/> <span>Скачать JSON</span></button>
+                  <button onClick={()=>fileInputRef.current.click()} className="flex-1 bg-gray-50 dark:bg-[#111] text-t2-black dark:text-white font-bold text-[10px] uppercase py-3 rounded-xl flex justify-center items-center space-x-1.5 border border-gray-200 dark:border-[#333] active:scale-95"><Icon.Upload/> <span>Загрузить</span></button>
+                  <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={importData} />
+               </div>
+            </div>
+
+            <div className="bg-white dark:bg-[#1E1E1E] p-4 rounded-2xl mb-4 shadow-sm border border-gray-100 dark:border-[#2A2A2A] transition-colors">
+               <h3 className="text-xs font-black uppercase tracking-wider mb-3 text-t2-pink">Планы салона на месяц</h3>
+               <div className="grid grid-cols-2 gap-2.5">
+                  <div className="bg-gray-50 dark:bg-[#111] p-2.5 rounded-xl border border-gray-200 dark:border-[#222] col-span-2">
+                     <div className="text-[9px] font-bold text-t2-pink uppercase tracking-wider mb-0.5">Норма часов по табелю</div>
+                     <input type="number" inputMode="numeric" min="0" value={storePlans.hoursNorm} onChange={e => setStorePlans(prev => ({...prev, hoursNorm: Number(e.target.value) || 0}))} className="w-full bg-transparent font-black text-base outline-none text-t2-black dark:text-white" />
+                  </div>
+                  {Object.keys(storePlans).map(k => {
+                     if (k === 'hoursNorm') return null;
+                     const labels = {
+                       equipment:'Оборуд (₽)', 
+                       acc:'Аксесс (₽)', 
+                       pdu:'ПДУ (₽)', 
+                       insurance:'Страховки (₽)', 
+                       subs:'Подписки (₽)', 
+                       rtk:'АО РТК (₽)', 
+                       cam:'Камеры (шт)', 
+                       plotter:'Пленка (шт)', 
+                       credits:'Кредиты (₽)', 
+                       shpd:'ШПД (шт)', 
+                       gi:'Сим (шт)', 
+                       ftp:'ФТП (шт)', 
+                       mnp:'MNP (шт)', 
+                       abonement:'Абонемент (шт)', 
+                       combo:'Комбо (шт)'
+                     };
+                     return (
+                        <div key={k} className="bg-gray-50 dark:bg-[#111] p-2.5 rounded-xl border border-gray-200 dark:border-[#222] focus-within:border-t2-pink">
+                           <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">{labels[k] || k}</div>
+                           <input type="number" inputMode="decimal" min="0" value={storePlans[k] || ''} onChange={e => setStorePlans(prev => ({...prev, [k]: Number(e.target.value) || 0}))} className="w-full bg-transparent font-black text-base outline-none text-t2-black dark:text-white" />
+                        </div>
+                     );
+                  })}
+               </div>
+            </div>
+            
+            {/* НОВАЯ КНОПКА ЗАКРЫТИЯ МЕСЯЦА */}
+            <button onClick={closeMonth} className="w-full bg-red-50 dark:bg-[#2A111E] text-red-500 font-black uppercase tracking-wider text-[11px] py-4 rounded-2xl active:scale-95 border border-red-100 dark:border-red-900/30 transition-all">Закрыть месяц (В архив)</button>
+         </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
