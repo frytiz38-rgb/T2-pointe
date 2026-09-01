@@ -13,10 +13,10 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="t2 Point">
   
-  <link rel="icon" href="icon.png" type="image/png">
-  <link rel="apple-touch-icon" href="icon.png">
+  <link rel="icon" href="icon.png?v=2" type="image/png">
+  <link rel="apple-touch-icon" href="icon.png?v=2">
   
-  <link rel="manifest" href='data:application/manifest+json,{"name":"t2 Point | Enterprise OS","short_name":"t2 Point","display":"standalone","background_color":"#111111","theme_color":"#E5006D","icons":[{"src":"icon.png","sizes":"512x512","type":"image/png"}]}'>
+  <link rel="manifest" href='data:application/manifest+json,{"name":"t2 Point | Enterprise OS","short_name":"t2 Point","display":"standalone","background_color":"#111111","theme_color":"#E5006D","icons":[{"src":"https://frytiz38-rgb.github.io/T2-pointe/icon.png?v=2","sizes":"512x512","type":"image/png"}]}'>
   <!-- ================================== -->
 
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -83,7 +83,6 @@
       console.warn("Firebase Init Offline Fallback:", e); 
     }
 
-    // Бронебойный генератор ID
     const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
 
     function useGlobalSync(key, initialValue) {
@@ -190,7 +189,6 @@
     const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
     const monthName = today.toLocaleString('ru-RU', { month: 'long' });
 
-    // Идеальное форматирование времени чека
     const getFormattedDate = () => {
       return new Date().toLocaleString('ru-RU', {
          day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
@@ -277,7 +275,6 @@
       const [sales, setSales] = useStoreSyncData(currentStoreId, 'sales', []);
       const [salaryHistory, setSalaryHistory] = useStoreSyncData(currentStoreId, 'salary_history', []);
 
-      // Агрегация факта ТТ
       const storeFacts = useMemo(() => {
         const f = { equipment:0, acc:0, pdu:0, insurance:0, subs:0, rtk:0, cam:0, plotter:0, credits:0, shpd:0, gi:0, ftp:0, mnp:0, abonement:0, combo:0 };
         sales.forEach(s => {
@@ -304,7 +301,6 @@
         return f;
       }, [sales]);
 
-      // Расчет процентов выполнения планов
       const p = useMemo(() => {
         const pct = {};
         for (let k in storePlans) { 
@@ -314,7 +310,6 @@
         return pct;
       }, [storeFacts, storePlans]);
 
-      // Калькулятор начисления бонусов
       const calcBonus = useCallback((s) => {
         const amt = Number(s.amount) || 0;
         switch (s.cat) {
@@ -418,7 +413,6 @@
       const currentUser = userStats.find(u => String(u.id) === String(currentUserId)) || userStats[0] || {};
       const currentStore = globalStores.find(s => s.id === currentStoreId) || globalStores[0];
 
-      // Строгое закрытие месяца с типизацией
       const closeMonth = () => {
          if(confirm('Закрыть текущий месяц? Зарплаты сотрудников будут сохранены в архив, а касса обнулена для нового месяца.')) {
             const archiveRecord = {
@@ -504,9 +498,6 @@
       </button>
     );
 
-    // ============================================================================
-    // УПРАВЛЕНИЕ САЛОНАМИ
-    // ============================================================================
     function StoresView({ globalStores, setGlobalStores, currentStoreId, setCurrentStoreId }) {
        const [showAdd, setShowAdd] = useState(false);
        const [newStoreName, setNewStoreName] = useState('');
@@ -554,9 +545,6 @@
        );
     }
 
-    // ============================================================================
-    // КАССА
-    // ============================================================================
     function POSView({ onAdd }) {
       const [mainCat, setMainCat] = useState('comm');
       const [subCat, setSubCat] = useState('sim');
@@ -582,7 +570,7 @@
          setAmount(''); 
          setIsApple(false); 
          setIsRFA(false);
-         setTimeout(() => setIsSubmitting(false), 400); // Блокировка от двойного нажатия
+         setTimeout(() => setIsSubmitting(false), 400); 
       };
 
       const MainTab = ({ id, label }) => (
@@ -656,9 +644,6 @@
       );
     }
 
-    // ============================================================================
-    // ИСТОРИЯ ПРОДАЖ (С ФИЛЬТРОМ)
-    // ============================================================================
     function HistoryView({ historyList, onRemove, users }) {
       const [filterUser, setFilterUser] = useState('all');
 
@@ -722,9 +707,6 @@
       );
     }
 
-    // ============================================================================
-    // ДАШБОРД (ПРЕМИЯ И ПЛАНЫ)
-    // ============================================================================
     function DashboardView({ stats, storeFacts, storePlans }) {
       const runRatePct = currentDay / daysInMonth;
 
@@ -812,9 +794,6 @@
       );
     }
 
-    // ============================================================================
-    // СМЕНА (СОТРУДНИКИ И АРХИВ ЗАРПЛАТ)
-    // ============================================================================
     function TeamView({ users, setUsers, notify, salaryHistory }) {
        const [showAdd, setShowAdd] = useState(false);
        const [showArchive, setShowArchive] = useState(false);
@@ -878,7 +857,6 @@
                 ))}
              </div>
 
-             {/* БЛОК: Архив Зарплат */}
              {salaryHistory && salaryHistory.length > 0 && (
                 <div className="mt-8">
                    <button onClick={()=>setShowArchive(!showArchive)} className="w-full flex justify-between items-center bg-gray-100 dark:bg-[#1E1E1E] p-4 rounded-2xl text-t2-black dark:text-white font-black text-sm active:scale-95 transition-transform">
@@ -915,9 +893,6 @@
        );
     }
 
-    // ============================================================================
-    // НАСТРОЙКИ И ПЛАНЫ
-    // ============================================================================
     function AdminView({ storePlans, setStorePlans, closeMonth, notify, dataToBackup, setUsers, setSales, setSalaryHistory }) {
       const fileInputRef = useRef(null);
 
