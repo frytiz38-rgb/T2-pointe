@@ -5,18 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#111111">
-  <title>t2 Point</title>
+  <title>t2 Point | Enterprise OS</title>
   
-  <!-- === НАСТРОЙКИ ПРИЛОЖЕНИЯ И ИКОНКА (PWA) === -->
+  <!-- === PWA МАНИФЕСТ И ИКОНКА === -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="t2 Point">
   
-  <link rel="icon" href="https://i.postimg.cc/FYP8ZLWs/9ba3ba56.png" type="image/png">
-  <link rel="apple-touch-icon" href="https://i.postimg.cc/FYP8ZLWs/9ba3ba56.png">
+  <link rel="icon" href="icon.png" type="image/png">
+  <link rel="apple-touch-icon" href="icon.png">
   
-  <link rel="manifest" href='data:application/manifest+json,{"name":"t2 Point | Enterprise OS","short_name":"t2 Point","display":"standalone","background_color":"#111111","theme_color":"#E5006D","icons":[{"src":"https://i.postimg.cc/FYP8ZLWs/9ba3ba56.png","sizes":"512x512","type":"image/png"}]}'>
+  <link rel="manifest" href='data:application/manifest+json,{"name":"t2 Point | Enterprise OS","short_name":"t2 Point","display":"standalone","background_color":"#111111","theme_color":"#E5006D","icons":[{"src":"icon.png","sizes":"512x512","type":"image/png"}]}'>
   <!-- ================================== -->
 
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -83,8 +83,11 @@
       console.warn("Firebase Init Offline Fallback:", e); 
     }
 
+    // Бронебойный генератор ID
+    const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
+
     function useGlobalSync(key, initialValue) {
-      const storageKey = `t2_global_${key}_v21`;
+      const storageKey = `t2_global_${key}_v22`;
       const [data, setData] = useState(() => {
         try {
           const local = window.localStorage.getItem(storageKey);
@@ -95,14 +98,14 @@
 
       useEffect(() => {
         if (!isCloudOnline || !db) return;
-        const unsubscribe = db.collection('t2_global_v21').doc(key).onSnapshot(doc => {
+        const unsubscribe = db.collection('t2_global_v22').doc(key).onSnapshot(doc => {
           if (doc.exists) {
             setData(doc.data().value);
             window.localStorage.setItem(storageKey, JSON.stringify(doc.data().value));
           } else {
             const current = window.localStorage.getItem(storageKey);
             const val = current ? JSON.parse(current) : initialValue;
-            db.collection('t2_global_v21').doc(key).set({ value: val }).catch(()=>{});
+            db.collection('t2_global_v22').doc(key).set({ value: val }).catch(()=>{});
             setData(val);
           }
           isFirstLoad.current = false;
@@ -115,14 +118,14 @@
         setData(valueToStore);
         window.localStorage.setItem(storageKey, JSON.stringify(valueToStore));
         if (isCloudOnline && db) {
-           db.collection('t2_global_v21').doc(key).set({ value: valueToStore }).catch(()=>{});
+           db.collection('t2_global_v22').doc(key).set({ value: valueToStore }).catch(()=>{});
         }
       };
       return [data, setValue];
     }
 
     function useStoreSyncData(storeId, key, initialValue) {
-      const storageKey = `t2_store_${storeId}_${key}_v21`;
+      const storageKey = `t2_store_${storeId}_${key}_v22`;
       
       const [data, setData] = useState(() => {
         try {
@@ -139,14 +142,14 @@
 
         if (!isCloudOnline || !db || !storeId) return;
 
-        const unsubscribe = db.collection(`t2_store_${storeId}_v21`).doc(key).onSnapshot(doc => {
+        const unsubscribe = db.collection(`t2_store_${storeId}_v22`).doc(key).onSnapshot(doc => {
           if (doc.exists) {
             setData(doc.data().value);
             window.localStorage.setItem(storageKey, JSON.stringify(doc.data().value));
           } else {
             const currentLocal = window.localStorage.getItem(storageKey);
             const valToInit = currentLocal ? JSON.parse(currentLocal) : initialValue;
-            db.collection(`t2_store_${storeId}_v21`).doc(key).set({ value: valToInit }).catch(()=>{});
+            db.collection(`t2_store_${storeId}_v22`).doc(key).set({ value: valToInit }).catch(()=>{});
             setData(valToInit);
           }
         }, () => {});
@@ -158,7 +161,7 @@
         setData(valueToStore);
         window.localStorage.setItem(storageKey, JSON.stringify(valueToStore));
         if (isCloudOnline && db && storeId) {
-           db.collection(`t2_store_${storeId}_v21`).doc(key).set({ value: valueToStore }).catch(()=>{});
+           db.collection(`t2_store_${storeId}_v22`).doc(key).set({ value: valueToStore }).catch(()=>{});
         }
       };
       return [data, setValue];
@@ -182,11 +185,17 @@
     // ============================================================================
     // 2. ДАННЫЕ И СПРАВОЧНИКИ
     // ============================================================================
-    const generateId = () => Math.random().toString(36).substr(2, 9);
     const today = new Date();
     const currentDay = today.getDate();
     const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
     const monthName = today.toLocaleString('ru-RU', { month: 'long' });
+
+    // Идеальное форматирование времени чека
+    const getFormattedDate = () => {
+      return new Date().toLocaleString('ru-RU', {
+         day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+      }).replace(',', '');
+    };
 
     const TARIFFS = [
       { id: 'moy_online', name: 'Мой онлайн', rates: [29, 87, 131, 160], c: 'bg-indigo-500' },
@@ -209,23 +218,10 @@
     };
 
     const TITLES = { 
-      equip: 'Оборудование', 
-      acc: 'Аксессуары', 
-      pdu: 'Настройки ПДУ', 
-      ins: 'Страхование', 
-      subs: 'Подписки', 
-      pro32: 'Антивирус PRO32', 
-      cam: 'Умная Камера', 
-      rtk: 'Оборудование РТК', 
-      credit: 'Выдача кредита', 
-      split: 'Яндекс Сплит', 
-      shpd: 'ШПД РТК', 
-      di_t2: 'ДИ Т2', 
-      plotter: 'Пленка', 
-      mnp: 'MNP Перенос', 
-      tradein: 'Trade-In', 
-      vmr_good: 'Хорошая анкета ВМР', 
-      vmr_bad: 'Плохая анкета ВМР' 
+      equip: 'Оборудование', acc: 'Аксессуары', pdu: 'Настройки ПДУ', ins: 'Страхование', subs: 'Подписки', 
+      pro32: 'Антивирус PRO32', cam: 'Умная Камера', rtk: 'Оборудование РТК', credit: 'Выдача кредита', 
+      split: 'Яндекс Сплит', shpd: 'ШПД РТК', di_t2: 'ДИ Т2', plotter: 'Пленка', mnp: 'MNP Перенос', 
+      tradein: 'Trade-In', vmr_good: 'Хорошая анкета ВМР', vmr_bad: 'Плохая анкета ВМР' 
     };
 
     // ============================================================================
@@ -270,8 +266,7 @@
       const [currentStoreId, setCurrentStoreId] = useLocalStorage('t2_active_store_id', 'lezhnevskaya');
 
       const [users, setUsers] = useStoreSyncData(currentStoreId, 'users', [
-        { id: '1', name: 'Соколов В.М.', role: 'ССП', hours: 165 },
-        { id: '2', name: 'Московкин', role: 'СП', hours: 158 },
+        { id: '1', name: 'Соколов В.М.', role: 'ССП', hours: 165 }
       ]);
       const [currentUserId, setCurrentUserId] = useLocalStorage(`t2_curr_user_${currentStoreId}`, '1');
       
@@ -280,8 +275,6 @@
          plotter: 0, credits: 0, shpd: 0, gi: 0, ftp: 0, mnp: 0, abonement: 0, combo: 0 
       });
       const [sales, setSales] = useStoreSyncData(currentStoreId, 'sales', []);
-      
-      // НОВАЯ БАЗА ДАННЫХ: Архив зарплат
       const [salaryHistory, setSalaryHistory] = useStoreSyncData(currentStoreId, 'salary_history', []);
 
       // Агрегация факта ТТ
@@ -425,26 +418,26 @@
       const currentUser = userStats.find(u => String(u.id) === String(currentUserId)) || userStats[0] || {};
       const currentStore = globalStores.find(s => s.id === currentStoreId) || globalStores[0];
 
-      // ФУНКЦИЯ: Закрытие месяца и перенос в архив
+      // Строгое закрытие месяца с типизацией
       const closeMonth = () => {
          if(confirm('Закрыть текущий месяц? Зарплаты сотрудников будут сохранены в архив, а касса обнулена для нового месяца.')) {
             const archiveRecord = {
                id: generateId(),
                period: `${monthName} ${today.getFullYear()}`,
-               timestamp: new Date().getTime(),
+               timestamp: Date.now(),
                employees: userStats.map(u => ({
                   id: u.id,
                   name: u.name,
                   role: u.role,
-                  salary: u.totalSalary,
-                  base: u.totalBase,
-                  bonus: u.finalBonus,
-                  hours: u.hours
+                  salary: Number(u.totalSalary) || 0,
+                  base: Number(u.totalBase) || 0,
+                  bonus: Number(u.finalBonus) || 0,
+                  hours: Number(u.hours) || 0
                }))
             };
             setSalaryHistory(prev => [archiveRecord, ...prev]);
             setSales([]);
-            notify('Месяц закрыт, данные перенесены в архив!');
+            notify('Данные перенесены в архив!');
          }
       };
 
@@ -481,9 +474,7 @@
             {activeTab === 'pos' && (
                 users.length > 0 ? 
                 <POSView onAdd={(d) => { 
-                    const now = new Date();
-                    const dateStr = `${String(now.getDate()).padStart(2, '0')}.${String(now.getMonth()+1).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-                    setSales(prev => [{ ...d, id: generateId(), userId: currentUserId, date: dateStr }, ...prev]); 
+                    setSales(prev => [{ ...d, id: generateId(), userId: currentUserId, date: getFormattedDate() }, ...prev]); 
                     notify('Чек добавлен'); 
                 }} /> 
                 : <div className="p-10 text-center text-gray-400 font-bold text-sm">Добавьте сотрудника во вкладке «Смена»</div>
@@ -537,7 +528,7 @@
              </div>
 
              {showAdd && (
-                <div className="bg-white dark:bg-[#1E1E1E] p-4 rounded-2xl mb-5 border border-t2-pink shadow-sm">
+                 <div className="bg-white dark:bg-[#1E1E1E] p-4 rounded-2xl mb-5 border border-t2-pink shadow-sm">
                    <h3 className="text-xs font-black uppercase mb-2 text-t2-pink">Новая торговая точка</h3>
                    <input value={newStoreName} onChange={e=>setNewStoreName(e.target.value)} placeholder="Название (например: ТЦ Серебряный Город)" className="w-full p-3 bg-gray-50 dark:bg-[#111] rounded-xl outline-none font-bold text-sm mb-3 text-t2-black dark:text-white border border-gray-200 dark:border-transparent focus:border-t2-pink" />
                    <button onClick={handleAddStore} className="w-full bg-t2-black dark:bg-white text-white dark:text-black font-black py-2.5 rounded-xl active:scale-95 text-xs uppercase tracking-wide">Создать и перейти</button>
@@ -584,7 +575,6 @@
          if(['sim','mnp','shpd','di_t2','plotter','cam','tradein','abonement','vmr_good','vmr_bad'].includes(subCat)) {
            amt = 1;
          }
-         
          if(amt <= 0) return;
 
          setIsSubmitting(true);
@@ -592,7 +582,7 @@
          setAmount(''); 
          setIsApple(false); 
          setIsRFA(false);
-         setTimeout(() => setIsSubmitting(false), 350);
+         setTimeout(() => setIsSubmitting(false), 400); // Блокировка от двойного нажатия
       };
 
       const MainTab = ({ id, label }) => (
@@ -888,7 +878,7 @@
                 ))}
              </div>
 
-             {/* НОВЫЙ БЛОК: Архив Зарплат */}
+             {/* БЛОК: Архив Зарплат */}
              {salaryHistory && salaryHistory.length > 0 && (
                 <div className="mt-8">
                    <button onClick={()=>setShowArchive(!showArchive)} className="w-full flex justify-between items-center bg-gray-100 dark:bg-[#1E1E1E] p-4 rounded-2xl text-t2-black dark:text-white font-black text-sm active:scale-95 transition-transform">
@@ -1003,7 +993,6 @@
                </div>
             </div>
             
-            {/* НОВАЯ КНОПКА ЗАКРЫТИЯ МЕСЯЦА */}
             <button onClick={closeMonth} className="w-full bg-red-50 dark:bg-[#2A111E] text-red-500 font-black uppercase tracking-wider text-[11px] py-4 rounded-2xl active:scale-95 border border-red-100 dark:border-red-900/30 transition-all">Закрыть месяц (В архив)</button>
          </div>
       );
