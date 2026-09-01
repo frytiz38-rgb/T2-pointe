@@ -1,0 +1,10 @@
+const CACHE_NAME = 't2-point-v1';
+self.addEventListener('install', (e) => {
+  self.skipWaiting();
+});
+self.addEventListener('activate', (e) => {
+  e.waitUntil(clients.claim());
+});
+self.addEventListener('fetch', (e) => {
+  // Пропускаем все запросы напрямую, чтобы не ломать базу данных Firebase
+});
