@@ -229,6 +229,19 @@
       const [users, setUsers] = useStoreSyncData(currentStoreId, 'users', [{ id: '1', name: 'Соколов В.М.', role: 'ССП', hours: 165 }]);
       const [currentUserId, setCurrentUserId] = useLocalStorage(`t2_curr_user_${currentStoreId}`, '1');
       
+      // БРОНЕБОЙНАЯ ЗАЩИТА ID СОТРУДНИКА (ИСПРАВЛЕНИЕ ОШИБКИ "УДАЛЕН")
+      const safeUserId = useMemo(() => {
+          if (!users || users.length === 0) return null;
+          const exists = users.find(u => String(u.id) === String(currentUserId));
+          return exists ? String(currentUserId) : String(users[0].id);
+      }, [users, currentUserId]);
+
+      useEffect(() => {
+          if (safeUserId && String(safeUserId) !== String(currentUserId)) {
+              setCurrentUserId(safeUserId);
+          }
+      }, [safeUserId, currentUserId, setCurrentUserId]);
+      
       const [storePlans, setStorePlans] = useStoreSyncData(currentStoreId, 'store_plans', { hoursNorm: 165, equipment: 0, acc: 0, pdu: 0, insurance: 0, subs: 0, rtk: 0, cam: 0, plotter: 0, credits: 0, shpd: 0, gi: 0, ftp: 0, mnp: 0, abonement: 0, combo: 0 });
       const [sales, setSales] = useStoreSyncData(currentStoreId, 'sales', []);
       const [salaryHistory, setSalaryHistory] = useStoreSyncData(currentStoreId, 'salary_history', []);
@@ -342,7 +355,7 @@
            if (s.cat === 'sim') title = TARIFFS.find(t=>t.id===s.tariff)?.name || 'SIM';
            if (s.cat === 'abonement') title = `${ABONEMENTS[s.tariff]?.name || 'Абонемент'} (${s.abMonths}м)`;
            if (s.cat === 'equip' && s.isApple) title = 'Техника Apple';
-           return { ...s, title, userName: u ? u.name : 'Удален', bonusStr: calcBonus(s) };
+           return { ...s, title, userName: u ? u.name : 'УДАЛЕН', bonusStr: calcBonus(s) };
         });
       }, [sales, users, calcBonus]);
 
@@ -365,7 +378,7 @@
         });
       }, [users, sales, storePlans.hoursNorm, calcBonus]);
 
-      const currentUser = userStats.find(u => String(u.id) === String(currentUserId)) || userStats[0] || {};
+      const currentUser = userStats.find(u => String(u.id) === String(safeUserId)) || userStats[0] || {};
       const currentStore = globalStores.find(s => s.id === currentStoreId) || globalStores[0];
 
       const closeMonth = () => {
@@ -396,14 +409,14 @@
             <div className="flex items-center space-x-2 flex-shrink-0">
                <button onClick={()=>setIsDark(!isDark)} className="w-9 h-9 flex items-center justify-center bg-gray-100 dark:bg-[#1E1E1E] rounded-full text-gray-600 dark:text-gray-400 active:scale-95 transition-transform flex-shrink-0"><Icon.SunMoon isDark={isDark} /></button>
                {users.length > 0 && (
-                 <select value={currentUserId} onChange={(e) => setCurrentUserId(e.target.value)} className="h-9 max-w-[110px] bg-gray-100 dark:bg-[#1E1E1E] text-t2-black dark:text-white text-xs font-bold px-3 rounded-xl outline-none border border-transparent focus:border-t2-pink appearance-none cursor-pointer truncate flex items-center">
+                 <select value={safeUserId || ''} onChange={(e) => setCurrentUserId(e.target.value)} className="h-9 max-w-[110px] bg-gray-100 dark:bg-[#1E1E1E] text-t2-black dark:text-white text-xs font-bold px-3 rounded-xl outline-none border border-transparent focus:border-t2-pink appearance-none cursor-pointer truncate flex items-center">
                    {users.map(u => <option key={u.id} value={u.id}>{u.name.split(' ')[0]}</option>)}
                  </select>
                )}
             </div>
           </header>
           <main className="flex-1 overflow-y-auto px-4 py-3.5 pb-28 hide-scroll">
-            {activeTab === 'pos' && ( users.length > 0 ? <POSView onAdd={(d) => { setSales(prev => [{ ...d, id: generateId(), userId: currentUserId, date: getFormattedDate() }, ...prev]); notify('Чек добавлен'); }} /> : <div className="p-10 text-center text-gray-400 font-bold text-sm">Добавьте сотрудника</div> )}
+            {activeTab === 'pos' && ( users.length > 0 ? <POSView onAdd={(d) => { setSales(prev => [{ ...d, id: generateId(), userId: safeUserId, date: getFormattedDate() }, ...prev]); notify('Чек добавлен'); }} /> : <div className="p-10 text-center text-gray-400 font-bold text-sm">Добавьте сотрудника</div> )}
             {activeTab === 'dash' && (currentUser.id ? <DashboardView stats={currentUser} p={p} storeFacts={storeFacts} storePlans={storePlans} /> : <div className="p-10 text-center text-gray-400 font-bold text-sm">Нет активных сотрудников</div>)}
             {activeTab === 'history' && <HistoryView users={users} historyList={historyList} onRemove={(id) => {if(confirm('Удалить эту операцию?')) {setSales(prev => prev.filter(s => s.id !== id)); notify('Удалено');}}} />}
             {activeTab === 'team' && <TeamView users={userStats} setUsers={setUsers} notify={notify} salaryHistory={salaryHistory} />}
@@ -545,7 +558,7 @@
                {filteredList.slice().reverse().map((h) => (
                   <div key={h.id} className="bg-white dark:bg-[#1E1E1E] p-3.5 rounded-2xl border border-gray-100 dark:border-[#2A2A2A] shadow-sm transition-colors">
                      <div className="flex justify-between items-center mb-2 border-b border-gray-100 dark:border-[#2A2A2A] pb-1.5">
-                        <div className="flex items-center space-x-2"><div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black ${h.userName === 'Удален' ? 'bg-red-100 text-red-500' : 'bg-gray-100 dark:bg-[#111] text-gray-600 dark:text-gray-300'}`}>{h.userName.charAt(0)}</div><span className={`text-[10px] font-bold uppercase tracking-wider ${h.userName === 'Удален' ? 'text-red-500' : 'text-gray-500 dark:text-gray-400'}`}>{h.userName}</span></div>
+                        <div className="flex items-center space-x-2"><div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black ${h.userName === 'УДАЛЕН' ? 'bg-red-100 text-red-500' : 'bg-gray-100 dark:bg-[#111] text-gray-600 dark:text-gray-300'}`}>{h.userName.charAt(0)}</div><span className={`text-[10px] font-bold uppercase tracking-wider ${h.userName === 'УДАЛЕН' ? 'text-red-500' : 'text-gray-500 dark:text-gray-400'}`}>{h.userName}</span></div>
                         <span className="text-[9px] font-bold text-gray-400">{h.date}</span>
                      </div>
                      <div className="flex justify-between items-center">
