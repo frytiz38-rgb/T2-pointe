@@ -14,7 +14,7 @@
   <link rel="icon" href="https://frytiz38-rgb.github.io/T2-pointe/icon.png" type="image/png">
   <link rel="apple-touch-icon" href="https://frytiz38-rgb.github.io/T2-pointe/icon.png">
 
-  <!-- ВШИТЫЙ БРОНЕБОЙНЫЙ МАНИФЕСТ -->
+  <!-- ВШИТЫЙ МАНИФЕСТ ДЛЯ ПОЛНОГО ЭКРАНА -->
   <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22t2%20Point%22%2C%22short_name%22%3A%22t2%20Point%22%2C%22start_url%22%3A%22https%3A%2F%2Ffrytiz38-rgb.github.io%2FT2-pointe%2F%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23111111%22%2C%22theme_color%22%3A%22%23E5006D%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A%2F%2Ffrytiz38-rgb.github.io%2FT2-pointe%2Ficon.png%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fpng%22%7D%2C%7B%22src%22%3A%22https%3A%2F%2Ffrytiz38-rgb.github.io%2FT2-pointe%2Ficon.png%22%2C%22sizes%22%3A%22512x512%22%2C%22type%22%3A%22image%2Fpng%22%7D%5D%7D">
 
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -60,7 +60,7 @@
     const { useState, useMemo, useEffect, useCallback, useRef } = React;
 
     // ============================================================================
-    // 1. ИНИЦИАЛИЗАЦИЯ И ОФЛАЙН-ПЕРСИСТЕНТНОСТЬ FIREBASE
+    // 1. БАЗА ДАННЫХ FIREBASE
     // ============================================================================
     const firebaseConfig = {
       apiKey: "AIzaSyBmrijaK9UU0rbxzGOfVfc5aO5OxfJY24A",
@@ -80,26 +80,24 @@
     const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
 
     function useGlobalSync(key, initialValue) {
-      const storageKey = `t2_global_${key}_v26`;
+      const storageKey = `t2_global_${key}_v27`;
       const [data, setData] = useState(() => {
         try { const local = window.localStorage.getItem(storageKey); return local ? JSON.parse(local) : initialValue; } 
         catch { return initialValue; }
       });
-      const isFirstLoad = useRef(true);
 
       useEffect(() => {
         if (!isCloudOnline || !db) return;
-        const unsubscribe = db.collection('t2_global_v26').doc(key).onSnapshot(doc => {
+        const unsubscribe = db.collection('t2_global_v27').doc(key).onSnapshot(doc => {
           if (doc.exists) {
             setData(doc.data().value);
             window.localStorage.setItem(storageKey, JSON.stringify(doc.data().value));
           } else {
             const current = window.localStorage.getItem(storageKey);
             const val = current ? JSON.parse(current) : initialValue;
-            db.collection('t2_global_v26').doc(key).set({ value: val }).catch(()=>{});
+            db.collection('t2_global_v27').doc(key).set({ value: val }).catch(()=>{});
             setData(val);
           }
-          isFirstLoad.current = false;
         }, () => {});
         return () => unsubscribe();
       }, [key]);
@@ -108,13 +106,13 @@
         const valueToStore = val instanceof Function ? val(data) : val;
         setData(valueToStore);
         window.localStorage.setItem(storageKey, JSON.stringify(valueToStore));
-        if (isCloudOnline && db) db.collection('t2_global_v26').doc(key).set({ value: valueToStore }).catch(()=>{});
+        if (isCloudOnline && db) db.collection('t2_global_v27').doc(key).set({ value: valueToStore }).catch(()=>{});
       };
       return [data, setValue];
     }
 
     function useStoreSyncData(storeId, key, initialValue) {
-      const storageKey = `t2_store_${storeId}_${key}_v26`;
+      const storageKey = `t2_store_${storeId}_${key}_v27`;
       const [data, setData] = useState(() => {
         try { const local = window.localStorage.getItem(storageKey); return local ? JSON.parse(local) : initialValue; } 
         catch { return initialValue; }
@@ -126,14 +124,14 @@
 
         if (!isCloudOnline || !db || !storeId) return;
 
-        const unsubscribe = db.collection(`t2_store_${storeId}_v26`).doc(key).onSnapshot(doc => {
+        const unsubscribe = db.collection(`t2_store_${storeId}_v27`).doc(key).onSnapshot(doc => {
           if (doc.exists) {
             setData(doc.data().value);
             window.localStorage.setItem(storageKey, JSON.stringify(doc.data().value));
           } else {
             const currentLocal = window.localStorage.getItem(storageKey);
             const valToInit = currentLocal ? JSON.parse(currentLocal) : initialValue;
-            db.collection(`t2_store_${storeId}_v26`).doc(key).set({ value: valToInit }).catch(()=>{});
+            db.collection(`t2_store_${storeId}_v27`).doc(key).set({ value: valToInit }).catch(()=>{});
             setData(valToInit);
           }
         }, () => {});
@@ -144,7 +142,7 @@
         const valueToStore = val instanceof Function ? val(data) : val;
         setData(valueToStore);
         window.localStorage.setItem(storageKey, JSON.stringify(valueToStore));
-        if (isCloudOnline && db && storeId) db.collection(`t2_store_${storeId}_v26`).doc(key).set({ value: valueToStore }).catch(()=>{});
+        if (isCloudOnline && db && storeId) db.collection(`t2_store_${storeId}_v27`).doc(key).set({ value: valueToStore }).catch(()=>{});
       };
       return [data, setValue];
     }
@@ -165,7 +163,7 @@
     }
 
     // ============================================================================
-    // 2. ДАННЫЕ И СПРАВОЧНИКИ
+    // 2. СПРАВОЧНИКИ И УТИЛИТЫ
     // ============================================================================
     const today = new Date();
     const currentDay = today.getDate();
@@ -243,14 +241,11 @@
       const [activeTab, setActiveTab] = useState('dash');
       const [isDark, setIsDark] = useLocalStorage('t2_theme_pref', true);
       const [toast, setToast] = useState({ msg: '', v: false });
-      const [cart, setCart] = useState([]); // Состояние корзины
+      const [cart, setCart] = useState([]); 
       
       useEffect(() => {
-        if (isDark) {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
+        if (isDark) { document.documentElement.classList.add('dark'); } 
+        else { document.documentElement.classList.remove('dark'); }
       }, [isDark]);
 
       const notify = (msg) => { 
@@ -268,18 +263,19 @@
       ]);
       const [currentUserId, setCurrentUserId] = useLocalStorage(`t2_curr_user_${currentStoreId}`, '1');
       
-      // Бронебойная защита ID сотрудника
-      const safeUserId = useMemo(() => {
+      // ИДЕАЛЬНАЯ ЗАЩИТА: Гарантируем, что выбранный сотрудник существует в базе!
+      const activeUser = useMemo(() => {
           if (!users || users.length === 0) return null;
-          const exists = users.find(u => String(u.id) === String(currentUserId));
-          return exists ? String(currentUserId) : String(users[0].id);
+          let foundUser = users.find(u => String(u.id) === String(currentUserId));
+          return foundUser || users[0];
       }, [users, currentUserId]);
 
+      // Авто-коррекция памяти телефона, если выбран удаленный сотрудник
       useEffect(() => {
-          if (safeUserId && String(safeUserId) !== String(currentUserId)) {
-              setCurrentUserId(safeUserId);
+          if (activeUser && String(activeUser.id) !== String(currentUserId)) {
+              setCurrentUserId(activeUser.id);
           }
-      }, [safeUserId, currentUserId, setCurrentUserId]);
+      }, [activeUser, currentUserId, setCurrentUserId]);
       
       const [storePlans, setStorePlans] = useStoreSyncData(currentStoreId, 'store_plans', { 
           hoursNorm: 165, equipment: 0, acc: 0, pdu: 0, insurance: 0, subs: 0, rtk: 0, cam: 0, 
@@ -368,7 +364,7 @@
             if (p.gi >= 1.1 && activeRates.length > 3) rate = activeRates[3];
             else if (p.gi >= 1.0 && activeRates.length > 2) rate = activeRates[2];
             else if (p.gi >= 0.95 && activeRates.length > 1) rate = activeRates[1];
-            if (['moy_online_plus', 'vezde_online', 'black', 'combo'].includes(s.tariff)) {
+            if (['moy_online_plus', 'vezde_online', 'black', 'combo', 'combo_12m'].includes(s.tariff)) {
                if (p.gi >= 1.0 && p.ftp >= 1.0) { rate = rate * 1.1; }
             }
             return s.isRFA ? rate * 0.5 : rate;
@@ -421,7 +417,6 @@
         });
       }, [users, sales, storePlans.hoursNorm, calcBonus]);
 
-      const currentUser = userStats.find(u => String(u.id) === String(safeUserId)) || userStats[0] || {};
       const currentStore = globalStores.find(s => s.id === currentStoreId) || globalStores[0];
 
       const closeMonth = () => {
@@ -463,9 +458,9 @@
             </div>
             <div className="flex items-center space-x-2 flex-shrink-0">
                <button onClick={()=>setIsDark(!isDark)} className="w-9 h-9 flex items-center justify-center bg-gray-100 dark:bg-[#1E1E1E] rounded-full text-gray-600 dark:text-gray-400 active:scale-95 transition-transform flex-shrink-0"><Icon.SunMoon isDark={isDark} /></button>
-               {users.length > 0 && (
+               {users.length > 0 && activeUser && (
                  <select 
-                    value={safeUserId || ''} 
+                    value={activeUser.id} 
                     onChange={(e) => setCurrentUserId(e.target.value)} 
                     className="h-9 max-w-[110px] bg-gray-100 dark:bg-[#1E1E1E] text-t2-black dark:text-white text-xs font-bold px-3 rounded-xl outline-none border border-transparent focus:border-t2-pink appearance-none cursor-pointer truncate flex items-center"
                   >
@@ -477,25 +472,31 @@
 
           <main className="flex-1 overflow-y-auto px-4 py-3.5 pb-28 hide-scroll">
             {activeTab === 'pos' && ( 
-                users.length > 0 ? (
+                activeUser ? (
                     <POSView 
                         cart={cart} 
                         setCart={setCart} 
                         onAddMultiple={(items) => { 
+                            if (!activeUser) return;
                             const ds = getFormattedDate(); 
-                            const final = items.map(i => ({...i, userId: safeUserId, date: ds})); 
+                            const final = items.map(i => ({...i, userId: String(activeUser.id), date: ds})); 
                             setSales(prev => [...final, ...prev]); 
                             notify('Чек успешно пробит!'); 
                         }} 
                     />
                 ) : (
-                    <div className="p-10 text-center text-gray-400 font-bold text-sm">Добавьте сотрудника</div>
+                    <div className="p-10 text-center text-gray-400 font-bold text-sm">Добавьте сотрудника во вкладке «Смена»</div>
                 )
             )}
 
             {activeTab === 'dash' && (
-                currentUser.id ? (
-                    <DashboardView stats={currentUser} p={p} storeFacts={storeFacts} storePlans={storePlans} />
+                activeUser ? (
+                    <DashboardView 
+                        stats={userStats.find(u => String(u.id) === String(activeUser.id)) || userStats[0]} 
+                        p={p} 
+                        storeFacts={storeFacts} 
+                        storePlans={storePlans} 
+                    />
                 ) : (
                     <div className="p-10 text-center text-gray-400 font-bold text-sm">Нет активных сотрудников</div>
                 )
